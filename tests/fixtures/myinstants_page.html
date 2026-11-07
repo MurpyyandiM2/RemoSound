@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>MyInstants — test page</title>
+</head>
+<body>
+  <h1>Sound effects</h1>
+  <div id="instant-list-wrap" class="instants-list">
+    <!-- Card 1: audio inside the play() handler. -->
+    <div class="instant" id="instant_101">
+      <div class="instant-content">
+        <button class="small-button" onmousedown="play('/media/sounds/a.mp3')" aria-label="Play Boing">
+          play
+        </button>
+        <a class="instant-link" href="/instant/boing-sound-effect-101/">Boing Sound Effect</a>
+      </div>
+    </div>
+
+    <!-- Card 2: audio in a data-url attribute. -->
+    <div class="instant" id="instant_202">
+      <div class="instant-content">
+        <button class="small-button" data-url="/media/sounds/b.mp3" aria-label="Play Coin">
+          play
+        </button>
+        <a class="instant-link" href="/instant/coin-pickup-202/">Coin Pickup</a>
+      </div>
+    </div>
+
+    <!-- Card 3: audio in an <audio> element. -->
+    <div class="instant" id="instant_303">
+      <div class="instant-content">
+        <audio src="/media/sounds/c.mp3" preload="none"></audio>
+        <a class="instant-link" href="/instant/whoosh-transition-303/">Whoosh Transition</a>
+      </div>
+    </div>
+
+    <!-- Card 4: no audio reference at all; must be skipped. -->
+    <div class="instant" id="instant_404">
+      <div class="instant-content">
+        <button class="small-button" aria-label="Play Silent">play</button>
+        <a class="instant-link" href="/instant/silent-placeholder-404/">Silent Placeholder</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="pagination">
+    <a href="/en/index/us/?page=2">2</a>
+    <a href="/en/index/us/?page=3">3</a>
+  </div>
+</body>
+</html>
