@@ -7,9 +7,11 @@ or the filesystem, so a match is cheap enough to run per scene while editing.
 Scene text is tokenized, then expanded through :data:`CUE_MAP`: an Indonesian
 cue such as ``"muncul"`` adds the search terms ``pop``, ``appear`` and
 ``whoosh``, which is how a title like ``"Pop Whoosh"`` gets found from a scene
-written in Indonesian. Every token present in a sound's title scores
-:data:`TITLE_WEIGHT`, every token in its tags scores :data:`TAG_WEIGHT`, and
-every token in its category scores :data:`CATEGORY_WEIGHT`.
+written in Indonesian. Every term present in a sound's title scores
+:data:`TITLE_WEIGHT` — as a whole token or as a compact substring, so a cue
+like ``sadtrombone`` reaches ``"Sad Trombone"`` — every term in its tags scores
+:data:`TAG_WEIGHT`, and every term in its category scores
+:data:`CATEGORY_WEIGHT`.
 """
 
 from __future__ import annotations
@@ -51,12 +53,19 @@ TAG_WEIGHT = 2
 CATEGORY_WEIGHT = 1
 
 _WORD = re.compile(r"[a-z0-9]+")
+_NON_WORD = re.compile(r"[^a-z0-9]+")
 
 
 def _tokens(text: str) -> list[str]:
     """Lowercase word tokens, in order, including numbers."""
 
     return _WORD.findall(text.lower())
+
+
+def _compact(text: str) -> str:
+    """The title with every separator removed (``"Sad Trombone"`` -> ``"sadtrombone"``)."""
+
+    return _NON_WORD.sub("", text.lower())
 
 
 def _contains(tokens: list[str], sequence: tuple[str, ...]) -> bool:
@@ -107,7 +116,7 @@ class ContextualSoundMatcher:
         scored = []
         for sound in self._sounds:
             score = (
-                TITLE_WEIGHT * len(terms & sound.title_tokens)
+                TITLE_WEIGHT * sum(1 for term in terms if sound.title_hits(term))
                 + TAG_WEIGHT * len(terms & sound.tag_tokens)
                 + CATEGORY_WEIGHT * len(terms & sound.category_tokens)
             )
@@ -146,6 +155,7 @@ class ContextualSoundMatcher:
             category=str(entry.get("category") or ""),
             path=str(entry.get("path") or ""),
             title_tokens=frozenset(_tokens(title)),
+            title_compact=_compact(title),
             tag_tokens=frozenset(token for tag in tags for token in _tokens(str(tag))),
             category_tokens=frozenset(_tokens(str(entry.get("category") or ""))),
         )
@@ -160,5 +170,20 @@ class _Sound:
     category: str
     path: str
     title_tokens: frozenset[str]
+    title_compact: str
     tag_tokens: frozenset[str]
     category_tokens: frozenset[str]
+
+    def title_hits(self, term: str) -> bool:
+        """Whether ``term`` appears in the title as a token or as compact text.
+
+        Compact matching is what lets a multi-word cue such as ``sadtrombone``
+        reach ``"Sad Trombone"`` and an inflected cue such as ``screamer``
+        reach ``"Screamers"``. A single character is never compact-matched: it
+        would hit almost every title. A term that is already a title token is
+        not counted twice.
+        """
+
+        if term in self.title_tokens:
+            return True
+        return len(term) > 1 and term in self.title_compact

@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 from collections.abc import Callable
 from pathlib import Path
 
@@ -33,6 +34,13 @@ log = logging.getLogger(__name__)
 
 MAX_CONCURRENCY = 5
 MIN_CONCURRENCY = 1
+
+# Tags derived from the title feed the matcher's tag dimension. They stay short
+# and deduped so a single manifest entry cannot grow without bound.
+MAX_TAGS = 12
+MIN_TAG_LENGTH = 2
+
+_TAG_TOKEN = re.compile(r"[a-z0-9]+")
 
 # Windows refuses paths that leave too little room for the directory, so the
 # generated name stays comfortably below the classic 260-character limit.
@@ -51,6 +59,26 @@ MAX_ID_LENGTH = 80
 
 class EmptyDownloadError(Exception):
     """The server answered 200 but delivered no audio bytes."""
+
+
+def derive_tags(title: str) -> list[str]:
+    """Search tags implied by a sound's title, in title order.
+
+    The matcher scores tags as well as tokens, and the downloader is the only
+    producer of manifest records, so the tag dimension is filled here from the
+    one field a listing actually gives us. Tokens are lowercased alphanumeric
+    runs, single characters are dropped, duplicates collapse, and the list is
+    capped at :data:`MAX_TAGS`.
+    """
+
+    tags: list[str] = []
+    for token in _TAG_TOKEN.findall(title.lower()):
+        if len(token) < MIN_TAG_LENGTH or token in tags:
+            continue
+        tags.append(token)
+        if len(tags) == MAX_TAGS:
+            break
+    return tags
 
 
 class BulkDownloader:
@@ -204,7 +232,7 @@ class BulkDownloader:
                 title=button.title,
                 category=button.category,
                 relative_path=target.relative_to(self.storage.root).as_posix(),
-                tags=[],
+                tags=derive_tags(button.title),
             )
             self.storage.save()
         except OSError as error:

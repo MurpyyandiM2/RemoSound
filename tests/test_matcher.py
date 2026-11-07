@@ -1,8 +1,14 @@
 """Tests for the contextual scene-text sound matcher."""
 
+import httpx
 import pytest
 
+from remosound.downloader import BulkDownloader
 from remosound.matcher import CUE_MAP, ContextualSoundMatcher
+from remosound.scraper import InstantButton
+from remosound.storage import StorageManager
+
+BASE_URL = "https://www.myinstants.com"
 
 
 def _entry(instant_id, title, category, tags):
@@ -132,17 +138,97 @@ def test_english_cues_match_too(entries):
     assert _titles(matcher.match("fail"))[:1] == ["Sad Trombone"]
 
 
+# --- Compact matching ------------------------------------------------------
+
+
+def test_compact_cue_term_matches_a_multi_word_title():
+    matcher = ContextualSoundMatcher([_entry("sad-1", "Sad Trombone", "sfx", [])])
+
+    # "gagal" expands to "sadtrombone", which is not a title token.
+    results = matcher.match("rencana tersebut gagal total")
+
+    assert [result["id"] for result in results] == ["sad-1"]
+    assert results[0]["score"] == 3  # one title hit, at TITLE_WEIGHT
+
+
+def test_compact_term_matches_an_inflected_title():
+    matcher = ContextualSoundMatcher([_entry("scream-1", "Screamers", "scary", [])])
+
+    # "screamer" is not a token of "Screamers", but it is a substring.
+    results = matcher.match("screamer")
+
+    assert [result["id"] for result in results] == ["scream-1"]
+    assert results[0]["score"] == 3
+
+
+def test_compact_matching_does_not_double_count_a_token_hit():
+    matcher = ContextualSoundMatcher([_entry("pop-1", "Pop", "sfx", [])])
+
+    assert matcher.match("pop")[0]["score"] == 3
+
+
+def test_compact_matching_ignores_single_character_terms():
+    # Without the length guard, "a" would compact-match nearly every title.
+    matcher = ContextualSoundMatcher([_entry("sad-1", "Sad Trombone", "sfx", [])])
+
+    assert matcher.match("a") == []
+
+
+# --- Integration across the download seam ----------------------------------
+
+
+async def test_a_real_download_feeds_the_matcher_without_hand_written_tags(tmp_path):
+    """Download -> manifest on disk -> matcher, with tags derived by the downloader."""
+
+    sounds = {
+        "/media/sounds/sad-trombone.mp3": ("sadtrombone-1", "Sad Trombone", "sfx"),
+        "/media/sounds/vine-boom.mp3": ("vine-boom-1", "Vine Boom", "memes"),
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"ID3-fake")
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    storage = StorageManager(tmp_path / "downloads")
+    downloader = BulkDownloader(storage, client=client)
+    buttons = [
+        InstantButton(
+            id=instant_id,
+            title=title,
+            audio_url=f"{BASE_URL}{path}",
+            category=category,
+            page_url=f"{BASE_URL}/en/instant/{instant_id}/",
+        )
+        for path, (instant_id, title, category) in sounds.items()
+    ]
+
+    async with client:
+        paths = await downloader.download_batch(buttons)
+
+    assert len(paths) == 2
+    # Reload from disk so the test sees exactly what a later run would read.
+    entries = StorageManager(tmp_path / "downloads").entries()
+    assert all(entry["tags"] for entry in entries)
+
+    matches = ContextualSoundMatcher(entries).match("rencana tersebut gagal total")
+
+    assert [result["title"] for result in matches][:1] == ["Sad Trombone"]
+
+
 # --- Scoring ---------------------------------------------------------------
 
 
-def test_title_matches_outrank_tag_matches(entries):
-    matcher = ContextualSoundMatcher(entries)
+def test_title_only_match_outranks_tag_only_match():
+    # Neither entry matches in both fields, so the weights decide alone.
+    title_only = _entry("title-only", "Button", "ui", ["tick"])
+    tag_only = _entry("tag-only", "Tick", "ui", ["button"])
+    matcher = ContextualSoundMatcher([tag_only, title_only])
 
-    results = matcher.match("button")
+    results = {result["id"]: result["score"] for result in matcher.match("button", top_k=2)}
 
-    # "Click Button" matches in both title and tags; only it can score highest.
-    assert results[0]["id"] == "click-1"
-    assert results[0]["score"] >= 5  # 3 * title + 2 * tag
+    assert results["title-only"] == 3  # TITLE_WEIGHT
+    assert results["tag-only"] == 2  # TAG_WEIGHT
+    assert matcher.match("button")[0]["id"] == "title-only"
 
 
 def test_results_carry_the_result_shape(entries):
