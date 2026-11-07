@@ -15,8 +15,8 @@ human in a shell.
   and are not installed system-wide:
 
   ```bat
-  python -m venv .venv
-  .venv\Scripts\python.exe -m pip install -r requirements.txt
+  cmd /c "python -m venv .venv"
+  cmd /c ".venv\Scripts\python.exe -m pip install -r requirements.txt"
   ```
 
   `.venv\Scripts\activate` lets you type `python` afterwards, but the
@@ -29,8 +29,13 @@ human in a shell.
   ```bat
   cmd /c "git status"
   cmd /c ".venv\Scripts\python.exe -m pytest -q"
-  cmd /c "git add -A & git commit -m \"message\""
+  cmd /c "git add -A"
+  cmd /c "git commit -F commitmsg.tmp"
   ```
+
+  `git commit -m "message"` with escaped quotes is unreliable on this host —
+  the hook mangles it and git treats the message words as pathspecs. Write the
+  message to a file, commit with `-F`, then delete the file.
 
   Prefer dedicated file tools (`read`, `write`, `edit`, `glob`, `grep`) over
   shell one-liners.

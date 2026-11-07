@@ -39,8 +39,8 @@ cmd /c ".venv\Scripts\python.exe -m pytest -q"
 
 ## Module map
 
-`run.py` → `cli` → `matcher` / `remotion_adapter`, behind
-`scraper` → `downloader` → `storage`. Lower layers never import `cli`.
+`scraper` → `downloader` → `storage` → `matcher` → `remotion_adapter` → `cli`.
+Lower layers never import `cli`; nothing but `run.py` touches `sys.argv`.
 
 ## Hard rules
 
