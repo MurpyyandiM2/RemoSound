@@ -4,6 +4,7 @@ Every test is offline: pages come from ``tests/fixtures`` and HTTP goes through
 :class:`httpx.MockTransport`, never the live site.
 """
 
+import asyncio
 from pathlib import Path
 
 import httpx
@@ -151,6 +152,37 @@ async def test_crawl_category_and_search_build_their_urls():
     assert requested_urls[1] == f"{BASE_URL}/en/search/?name=boom"
 
 
+async def test_crawl_category_percent_encodes_the_category_name():
+    requested_urls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested_urls.append(str(request.url))
+        return httpx.Response(200, text="<html><body></body></html>")
+
+    scraper, client = scraper_for(handler)
+    async with client:
+        await scraper.crawl_category("movie clips", limit=5)
+
+    assert requested_urls == [f"{BASE_URL}/en/categories/movie%20clips/"]
+
+
+async def test_crawl_stops_when_page_numbers_are_ignored():
+    """A server that serves the same page for every ?page must not be looped on."""
+
+    requested_urls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested_urls.append(str(request.url))
+        return httpx.Response(200, text=fixture_html())
+
+    scraper, client = scraper_for(handler)
+    async with client:
+        buttons = await scraper.crawl_trending(limit=10)
+
+    assert [button.id for button in buttons] == EXPECTED_IDS
+    assert len(requested_urls) == 2
+
+
 async def test_fetch_page_retries_a_429_then_succeeds():
     call_count = 0
 
@@ -184,3 +216,50 @@ async def test_fetch_page_gives_up_after_retry_budget():
 
     assert call_count == 4
     assert error.value.response.status_code == 503
+
+
+async def test_fetch_page_waits_the_default_delay_before_the_first_request(monkeypatch):
+    sleeps: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="<html>ok</html>")
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    scraper = MyInstantsScraper(client=client, delay=0.5)
+    async with client:
+        await scraper.fetch_page(f"{BASE_URL}/en/index/us/")
+
+    assert sleeps == [0.5]
+
+
+async def test_fetch_page_backs_off_exponentially_between_retries(monkeypatch):
+    sleeps: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+
+    call_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        call_count += 1
+        if call_count < 4:
+            return httpx.Response(503, text="unavailable")
+        return httpx.Response(200, text="<html>ok</html>")
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    scraper = MyInstantsScraper(client=client, delay=0.5, max_retries=3)
+    async with client:
+        body = await scraper.fetch_page(f"{BASE_URL}/en/index/us/")
+
+    assert body == "<html>ok</html>"
+    assert call_count == 4
+    # 0.5 s before every attempt, then 0.5 s, 1 s, and 2 s of backoff.
+    assert sleeps == [0.5, 0.5, 0.5, 1.0, 0.5, 2.0, 0.5]

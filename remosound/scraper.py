@@ -18,7 +18,7 @@ from __future__ import annotations
 import asyncio
 import re
 from dataclasses import dataclass
-from urllib.parse import quote_plus, urljoin, urlparse
+from urllib.parse import quote, quote_plus, urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup, Tag
@@ -150,9 +150,13 @@ class MyInstantsScraper:
         return buttons
 
     async def crawl_category(self, category: str, limit: int = 100) -> list[InstantButton]:
-        """Crawl one category listing, stopping at ``limit`` buttons."""
+        """Crawl one category listing, stopping at ``limit`` buttons.
 
-        return await self._crawl(CATEGORY_URL.format(category=category.strip()), category, limit)
+        ``category`` is percent-encoded as a single path segment, so
+        ``"movie clips"`` becomes ``/en/categories/movie%20clips/``.
+        """
+
+        return await self._crawl(CATEGORY_URL.format(category=quote(category.strip(), safe="")), category, limit)
 
     async def crawl_search(self, query: str, limit: int = 100) -> list[InstantButton]:
         """Crawl search results for ``query``, stopping at ``limit`` buttons.
@@ -169,16 +173,24 @@ class MyInstantsScraper:
         return await self._crawl(TRENDING_URL, "trending", limit)
 
     async def _crawl(self, listing_url: str, category_hint: str, limit: int) -> list[InstantButton]:
-        """Walk the 1-based pages of a listing until ``limit`` or an empty page."""
+        """Walk the 1-based pages of a listing until ``limit`` or an empty page.
+
+        Ids already collected are skipped, and the walk stops as soon as a page
+        contributes no new id. That bounds the cost both for a listing that runs
+        out of pages and for a server that ignores ``?page=n`` and keeps serving
+        the same page.
+        """
 
         buttons: list[InstantButton] = []
+        seen: set[str] = set()
         page = 1
         while len(buttons) < limit:
             html = await self.fetch_page(_page_url(listing_url, page))
-            page_buttons = self.parse_buttons(html, category_hint)
-            if not page_buttons:
+            fresh = [button for button in self.parse_buttons(html, category_hint) if button.id not in seen]
+            if not fresh:
                 break
-            buttons.extend(page_buttons)
+            seen.update(button.id for button in fresh)
+            buttons.extend(fresh)
             page += 1
         return buttons[:limit]
 
