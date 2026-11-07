@@ -9,6 +9,7 @@ import hashlib
 import json
 
 import httpx
+import pytest
 
 from remosound import downloader as downloader_module
 from remosound.downloader import BulkDownloader
@@ -439,6 +440,53 @@ async def test_download_batch_downloads_a_duplicate_id_only_once(tmp_path):
     assert len(paths) == 1
     assert len(calls) == 1
     assert [done for done, _, _ in progress] == [1]
+
+
+async def test_download_batch_saves_the_manifest_exactly_once(tmp_path, monkeypatch):
+    downloader, storage, client = make_downloader(tmp_path, audio_handler())
+    saves: list[int] = []
+    original_save = storage.save
+
+    def counting_save() -> None:
+        saves.append(1)
+        original_save()
+
+    monkeypatch.setattr(storage, "save", counting_save)
+    buttons = [make_button(f"boom-{index}", title=f"Boom {index}") for index in range(1, 4)]
+
+    async with client:
+        paths = await downloader.download_batch(buttons)
+
+    assert len(paths) == 3
+    assert len(saves) == 1
+    assert sorted(json.loads(storage.manifest_path.read_text(encoding="utf-8"))) == [
+        "boom-1",
+        "boom-2",
+        "boom-3",
+    ]
+
+
+async def test_an_interrupted_batch_still_persists_finished_records(tmp_path, monkeypatch):
+    class SimulatedCrash(BaseException):
+        """A crash the batch's per-button guard cannot swallow."""
+
+    downloader, storage, client = make_downloader(tmp_path, audio_handler(), max_concurrency=1)
+    original_transfer = downloader._transfer
+
+    async def crash_on_boom_3(button: InstantButton, target) -> None:
+        if button.id == "boom-3":
+            raise SimulatedCrash
+        await original_transfer(button, target)
+
+    monkeypatch.setattr(downloader, "_transfer", crash_on_boom_3)
+    buttons = [make_button(f"boom-{index}", title=f"Boom {index}") for index in range(1, 4)]
+
+    with pytest.raises(BaseExceptionGroup):
+        async with client:
+            await downloader.download_batch(buttons)
+
+    on_disk = json.loads(storage.manifest_path.read_text(encoding="utf-8"))
+    assert sorted(on_disk) == ["boom-1", "boom-2"]
 
 
 async def test_download_batch_never_exceeds_its_concurrency_limit(tmp_path):

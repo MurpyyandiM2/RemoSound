@@ -139,15 +139,21 @@ class BulkDownloader:
         by a concurrent caller that held the same id lock) or the transfer kept
         failing. A file that already exists on disk but is missing from the
         manifest is adopted — recorded and returned — so an interrupted run
-        never re-downloads it or reports it as a failure.
+        never re-downloads it or reports it as a failure. The manifest is saved
+        once here, so a standalone call is durable when it returns.
         """
+
+        return await self._download_one(button, persist=True)
+
+    async def _download_one(self, button: InstantButton, persist: bool) -> Path | None:
+        """The shared download path; ``persist`` decides who writes the manifest."""
 
         if self.storage.is_downloaded(button.id):
             return None
 
         target = self._target_path(button)
         if target.exists():
-            return self._adopt(button, target)
+            return self._adopt(button, target, persist)
 
         # One lock per instant id. A second caller for the same id waits here
         # instead of racing on the same target and ``.part`` paths, then finds
@@ -158,7 +164,7 @@ class BulkDownloader:
                 if self.storage.is_downloaded(button.id):
                     return None
                 if target.exists():
-                    return self._adopt(button, target)
+                    return self._adopt(button, target, persist)
                 try:
                     await self._transfer(button, target)
                 except (httpx.HTTPError, OSError, EmptyDownloadError) as error:
@@ -167,7 +173,7 @@ class BulkDownloader:
 
                 # Mutate and persist without an intervening await, so concurrent
                 # record/save pairs cannot lose one another's entries.
-                self._record(button, target)
+                self._record(button, target, persist)
                 return target
         finally:
             self._release_id_lock(button.id)
@@ -182,6 +188,11 @@ class BulkDownloader:
         Buttons are identified by instant id, so duplicates in ``buttons``
         collapse to a single download. Progress is reported once per unique
         button as ``on_progress(completed, total, title)``.
+
+        Records accumulate in memory during the batch and the manifest is
+        written exactly once at the end — a 5000-sound run would otherwise
+        rewrite the whole file 5000 times. The save sits in a ``finally``, so a
+        crash still flushes every record that already completed.
         """
 
         unique = list({button.id: button for button in buttons}.values())
@@ -192,7 +203,7 @@ class BulkDownloader:
         async def run(index: int, button: InstantButton) -> None:
             nonlocal completed
             try:
-                results[index] = await self.download_one(button)
+                results[index] = await self._download_one(button, persist=False)
             except Exception:
                 # One bad sound must not abort a bulk run; the traceback keeps
                 # the unexpected failure visible to the caller's logs.
@@ -201,9 +212,12 @@ class BulkDownloader:
             if on_progress is not None:
                 on_progress(completed, total, button.title or button.id)
 
-        async with asyncio.TaskGroup() as tasks:
-            for index, button in enumerate(unique):
-                tasks.create_task(run(index, button))
+        try:
+            async with asyncio.TaskGroup() as tasks:
+                for index, button in enumerate(unique):
+                    tasks.create_task(run(index, button))
+        finally:
+            self._save_manifest()
 
         return [path for path in results if path is not None]
 
@@ -229,7 +243,7 @@ class BulkDownloader:
             stem = safe_id[:budget].rstrip(" .") or "sound"
         return self.storage.category_dir(button.category) / f"{stem}{suffix}"
 
-    def _adopt(self, button: InstantButton, target: Path) -> Path:
+    def _adopt(self, button: InstantButton, target: Path, persist: bool) -> Path:
         """Record an existing target file whose id is missing from the manifest.
 
         An interrupted earlier run can leave audio on disk without a manifest
@@ -237,11 +251,15 @@ class BulkDownloader:
         re-fetching it or reporting a phantom failure.
         """
 
-        self._record(button, target)
+        self._record(button, target, persist)
         return target
 
-    def _record(self, button: InstantButton, target: Path) -> None:
-        """Store ``target`` as the sound for ``button`` in the manifest."""
+    def _record(self, button: InstantButton, target: Path, persist: bool) -> None:
+        """Store ``target`` as the sound for ``button`` in the manifest.
+
+        ``persist`` is false inside a batch, where :meth:`download_batch` owns
+        the single save.
+        """
 
         try:
             self.storage.record_download(
@@ -251,10 +269,19 @@ class BulkDownloader:
                 relative_path=target.relative_to(self.storage.root).as_posix(),
                 tags=derive_tags(button.title),
             )
-            self.storage.save()
+            if persist:
+                self.storage.save()
         except OSError as error:
             # The audio is on disk; only the dedupe record is missing.
             log.warning("could not record %s in the manifest: %s", button.id, error)
+
+    def _save_manifest(self) -> None:
+        """Persist the manifest, logging instead of failing a finished batch."""
+
+        try:
+            self.storage.save()
+        except OSError as error:
+            log.warning("could not save the manifest: %s", error)
 
     def _id_lock_for(self, instant_id: str) -> asyncio.Lock:
         """Return the lock guarding ``instant_id``, counting a new user."""
