@@ -9,6 +9,7 @@ from remosound.remotion_adapter import (
     export_typescript_helper,
     stage_into_remotion,
 )
+from remosound.storage import StorageManager
 
 
 def _entry(instant_id, title, category, tags=(), path=None):
@@ -58,6 +59,18 @@ def test_export_registry_uses_forward_slashes_on_every_platform(tmp_path, entrie
     src = registry["sounds"][0]["src"]
     assert src == "remosound/sfx/Vine Boom-abc123.mp3"
     assert "\\" not in src
+
+
+def test_registry_src_uses_the_same_category_dir_as_the_bank(tmp_path):
+    # A multiword category must slug to the directory the downloader writes into.
+    entries = [_entry("abc123", "Boom", "Sound Effects", path="Sound Effects/Boom-abc123.mp3")]
+    registry_path = export_registry(entries, tmp_path / "sound-bank.json")
+    bank_dir = StorageManager(tmp_path / "downloads").category_dir("Sound Effects")
+
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+
+    assert bank_dir.name == "sound-effects"
+    assert registry["sounds"][0]["src"] == f"remosound/{bank_dir.name}/Boom-abc123.mp3"
 
 
 def test_export_registry_keeps_ids_sorted_for_stable_output(tmp_path):
@@ -111,6 +124,17 @@ def test_typescript_helper_stays_dependency_free(tmp_path, entries):
     assert "require(" not in source
 
 
+def test_generated_header_points_at_a_real_command(tmp_path, entries):
+    registry_path = export_registry(entries, tmp_path / "sound-bank.json")
+    output = tmp_path / "sound-bank.ts"
+
+    export_typescript_helper(registry_path, output)
+
+    source = output.read_text(encoding="utf-8")
+    assert "--rebuild-index" in source
+    assert "--export-registry" not in source
+
+
 def test_export_typescript_helper_handles_an_empty_bank(tmp_path):
     registry_path = export_registry([], tmp_path / "sound-bank.json")
     output = tmp_path / "sound-bank.ts"
@@ -119,6 +143,33 @@ def test_export_typescript_helper_handles_an_empty_bank(tmp_path):
 
     source = output.read_text(encoding="utf-8")
     assert "export const SOUND_BANK: SoundEntry[] = []" in source
+
+
+# --- registry validation ---------------------------------------------------
+
+
+def test_consumers_reject_a_payload_that_is_not_an_object(tmp_path):
+    registry_path = tmp_path / "sound-bank.json"
+    registry_path.write_text("[]", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="must be a JSON object"):
+        export_typescript_helper(registry_path, tmp_path / "sound-bank.ts")
+
+    with pytest.raises(ValueError, match="must be a JSON object"):
+        stage_into_remotion(registry_path, tmp_path / "downloads", tmp_path / "public")
+
+
+def test_consumers_reject_an_unknown_registry_version(tmp_path, entries):
+    registry_path = tmp_path / "sound-bank.json"
+    registry = json.loads(export_registry(entries, registry_path).read_text(encoding="utf-8"))
+    registry["version"] = 2
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="unsupported version"):
+        export_typescript_helper(registry_path, tmp_path / "sound-bank.ts")
+
+    with pytest.raises(ValueError, match="unsupported version"):
+        stage_into_remotion(registry_path, tmp_path / "downloads", tmp_path / "public")
 
 
 # --- stage_into_remotion ---------------------------------------------------

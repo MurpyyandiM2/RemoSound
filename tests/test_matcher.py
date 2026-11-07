@@ -163,6 +163,12 @@ def test_blank_text_returns_nothing(entries, text):
     assert matcher.match(text) == []
 
 
+def test_none_text_returns_nothing(entries):
+    matcher = ContextualSoundMatcher(entries)
+
+    assert matcher.match(None) == []
+
+
 def test_unmatched_text_returns_nothing_and_does_not_raise(entries):
     matcher = ContextualSoundMatcher(entries)
 

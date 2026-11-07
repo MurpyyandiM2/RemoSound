@@ -68,6 +68,18 @@ def _avoid_reserved(name: str, max_length: int) -> str:
     return f"{stem}_{extension}"[:max_length].rstrip(" .") or "_"
 
 
+def category_slug(name: str) -> str:
+    """Return the directory name used for a category.
+
+    The name is sanitized for Windows, lowercased, and has whitespace replaced
+    with dashes (``"Sound Effects"`` -> ``"sound-effects"``). The bank layout
+    and the Remotion registry both derive from this, so a category always maps
+    to one directory name.
+    """
+
+    return _WHITESPACE.sub("-", sanitize_filename(name, fallback="uncategorized")).lower()
+
+
 class StorageManager:
     """Own the download manifest and category directories under ``root``."""
 
@@ -109,7 +121,7 @@ class StorageManager:
         replaced with dashes (``"Sound Effects"`` -> ``sound-effects``).
         """
 
-        slug = _WHITESPACE.sub("-", sanitize_filename(category, fallback="uncategorized")).lower()
+        slug = category_slug(category)
         directory = self.root / slug
         directory.mkdir(parents=True, exist_ok=True)
         return directory

@@ -92,10 +92,11 @@ class ContextualSoundMatcher:
         """Return up to ``top_k`` sounds for ``context_text``, best first.
 
         Results are ``{"id", "title", "category", "path", "score"}`` dicts.
-        Blank or unmatched text yields ``[]``; nothing here raises on ordinary
-        input.
+        Blank, ``None``, or unmatched text yields ``[]``; nothing here raises on
+        ordinary input.
         """
 
+        context_text = context_text or ""
         if top_k <= 0:
             return []
 
