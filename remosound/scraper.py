@@ -186,7 +186,10 @@ class MyInstantsScraper:
         page = 1
         while len(buttons) < limit:
             html = await self.fetch_page(_page_url(listing_url, page))
-            fresh = [button for button in self.parse_buttons(html, category_hint) if button.id not in seen]
+            # One card can appear twice on a page; keep the first occurrence so
+            # a duplicate neither lands in the bank twice nor eats a limit slot.
+            by_id = {button.id: button for button in self.parse_buttons(html, category_hint)}
+            fresh = [button for instant_id, button in by_id.items() if instant_id not in seen]
             if not fresh:
                 break
             seen.update(button.id for button in fresh)

@@ -221,6 +221,30 @@ async def test_dry_run_prints_the_plan_and_writes_nothing(tmp_path, monkeypatch,
     assert not bank.exists()
 
 
+async def test_batch_dry_run_mentions_the_remotion_staging_it_would_do(tmp_path, monkeypatch, capsys):
+    patch_crawl(monkeypatch, "crawl_trending", [make_button()])
+    public = tmp_path / "public"
+
+    code = await main_async(
+        [
+            "--dry-run",
+            "--trending",
+            "--limit",
+            "1",
+            "--out",
+            str(tmp_path / "downloads"),
+            "--remotion-public",
+            str(public),
+        ]
+    )
+
+    output = capsys.readouterr().out
+    assert code == 0
+    assert "Dry run: would stage into" in output
+    assert "public" in output
+    assert not public.exists()
+
+
 async def test_dry_run_does_not_touch_the_downloader(tmp_path, monkeypatch):
     patch_crawl(monkeypatch, "crawl_trending", [make_button()])
 
@@ -312,6 +336,54 @@ async def test_rebuild_index_dry_run_writes_nothing(tmp_path):
     assert code == 0
     assert not (tmp_path / "sound-bank.json").exists()
     assert not (tmp_path / "sound-bank.ts").exists()
+
+
+async def test_rebuild_refuses_to_overwrite_a_populated_registry_from_an_empty_bank(tmp_path, capsys):
+    bank = seed_bank(tmp_path, [("win-1", "Win Fanfare", "sfx")])
+    assert await main_async(["--rebuild-index", "--out", str(bank)]) == 0
+    registry_path = tmp_path / "sound-bank.json"
+    before = registry_path.read_text(encoding="utf-8")
+
+    # A corrupt manifest is quarantined and leaves the bank empty.
+    (bank / "manifest.json").write_text("{ not json", encoding="utf-8")
+
+    code = await main_async(["--rebuild-index", "--out", str(bank)])
+
+    assert code == 1
+    assert registry_path.read_text(encoding="utf-8") == before
+    # rich wraps long paths, so compare whitespace-free text.
+    err = "".join(capsys.readouterr().err.split())
+    assert "refusingtooverwrite" in err
+    assert "manifest.json.corrupt" in err
+
+
+async def test_staging_refuses_to_replace_a_populated_public_registry(tmp_path):
+    bank = seed_bank(tmp_path, [("win-1", "Win Fanfare", "sfx")])
+    audio = bank / "sfx" / "Win Fanfare-win-1.mp3"
+    audio.parent.mkdir(parents=True, exist_ok=True)
+    audio.write_bytes(b"ID3-fake")
+    public = tmp_path / "public"
+    argv = ["--rebuild-index", "--out", str(bank), "--remotion-public", str(public)]
+    assert await main_async(argv) == 0
+    staged = public / "sound-bank.json"
+    before = staged.read_text(encoding="utf-8")
+
+    (bank / "manifest.json").write_text("{ not json", encoding="utf-8")
+
+    code = await main_async(argv)
+
+    assert code == 1
+    assert staged.read_text(encoding="utf-8") == before
+
+
+async def test_an_empty_bank_may_still_create_a_first_registry(tmp_path):
+    # Refusing is only about overwriting sounds that are already published.
+    bank = tmp_path / "downloads"
+
+    code = await main_async(["--rebuild-index", "--out", str(bank)])
+
+    assert code == 0
+    assert json.loads((tmp_path / "sound-bank.json").read_text(encoding="utf-8"))["sounds"] == []
 
 
 # --- batch downloads -------------------------------------------------------

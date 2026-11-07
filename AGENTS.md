@@ -84,7 +84,7 @@ remosound/
   cli.py          menus, flags, rich output
   scraper.py      MyInstants pages -> sound records (rate limited)
   downloader.py   sound records -> files under downloads/ (bounded concurrency)
-  storage.py      downloads/manifest.json and sound-bank.json
+  storage.py      downloads/manifest.json (dedupe record)
   matcher.py      scene text -> ranked sounds
   remotion_adapter.py  staticFile()-ready paths for Remotion projects
 ```

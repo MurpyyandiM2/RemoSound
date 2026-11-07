@@ -12,7 +12,9 @@ look a sound up by id or search for one by text.
 from __future__ import annotations
 
 import json
+import os
 import shutil
+import tempfile
 from pathlib import Path, PurePosixPath
 
 from remosound.storage import category_slug
@@ -45,7 +47,7 @@ def export_registry(entries: list[dict], output_path: Path) -> Path:
     }
 
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(registry, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    _write_atomic(output, json.dumps(registry, ensure_ascii=False, indent=2) + "\n")
     return output
 
 
@@ -79,7 +81,7 @@ def export_typescript_helper(registry_path: Path, output_path: Path) -> Path:
 
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(document, encoding="utf-8")
+    _write_atomic(output, document)
     return output
 
 
@@ -106,8 +108,43 @@ def stage_into_remotion(registry_path: Path, sound_root: Path, remotion_public_d
 
     staged = public_dir / REGISTRY_NAME
     staged.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source_registry, staged)
+    _copy_atomic(source_registry, staged)
     return staged
+
+
+def _write_atomic(path: Path, text: str) -> None:
+    """Write ``text`` to ``path`` via a temp file in the same directory.
+
+    A reader (Remotion, an editor) sees either the previous file or the new
+    one, never a half-written registry, and a failed write removes its temp
+    file instead of leaving debris in the user's project.
+    """
+
+    descriptor, temp_name = tempfile.mkstemp(dir=path.parent, prefix=f"{path.name}.", suffix=".tmp")
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        os.replace(temp_path, path)
+    except BaseException:
+        temp_path.unlink(missing_ok=True)
+        raise
+
+
+def _copy_atomic(source: Path, destination: Path) -> None:
+    """Copy ``source`` over ``destination`` without exposing a partial file."""
+
+    descriptor, temp_name = tempfile.mkstemp(
+        dir=destination.parent, prefix=f"{destination.name}.", suffix=".tmp"
+    )
+    os.close(descriptor)
+    temp_path = Path(temp_name)
+    try:
+        shutil.copy2(source, temp_path)
+        os.replace(temp_path, destination)
+    except BaseException:
+        temp_path.unlink(missing_ok=True)
+        raise
 
 
 def _registry_entry(entry: dict) -> dict:

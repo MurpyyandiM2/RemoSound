@@ -11,6 +11,7 @@ import json
 import os
 import re
 import tempfile
+import warnings
 from pathlib import Path
 
 # Characters Windows forbids in filenames, plus ASCII control characters.
@@ -84,6 +85,7 @@ class StorageManager:
     """Own the download manifest and category directories under ``root``."""
 
     MANIFEST_NAME = "manifest.json"
+    CORRUPT_SUFFIX = ".corrupt"
 
     def __init__(self, root: Path) -> None:
         self.root = Path(root)
@@ -92,6 +94,12 @@ class StorageManager:
     @property
     def manifest_path(self) -> Path:
         return self.root / self.MANIFEST_NAME
+
+    @property
+    def corrupt_manifest_path(self) -> Path:
+        """Where an unreadable manifest is moved instead of being lost."""
+
+        return self.manifest_path.with_name(self.MANIFEST_NAME + self.CORRUPT_SUFFIX)
 
     def is_downloaded(self, instant_id: str) -> bool:
         return instant_id in self.manifest
@@ -144,14 +152,31 @@ class StorageManager:
     def entries(self) -> list[dict]:
         """Return the manifest records as plain dicts."""
 
-        return [dict(entry, tags=list(entry.get("tags") or [])) for entry in self.manifest.values()]
+        records = []
+        for entry in self.manifest.values():
+            tags = entry.get("tags")
+            records.append(dict(entry, tags=list(tags) if isinstance(tags, (list, tuple)) else []))
+        return records
 
     def _load(self) -> dict[str, dict]:
+        """Read the manifest, quarantining a file this class cannot trust.
+
+        Dumping a corrupt manifest is not an option: the user's staged registry
+        still refers to sounds it recorded, so the bad file is renamed to
+        ``manifest.json.corrupt`` (and loudly warned about) before the empty
+        manifest takes its place.
+        """
+
         try:
             raw = json.loads(self.manifest_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        except FileNotFoundError:
             return {}
+        except (OSError, ValueError) as error:
+            self._quarantine(f"unreadable manifest ({error})")
+            return {}
+
         if not isinstance(raw, dict):
+            self._quarantine(f"manifest is a JSON {type(raw).__name__}, not an object")
             return {}
 
         manifest: dict[str, dict] = {}
@@ -159,11 +184,32 @@ class StorageManager:
             if not isinstance(entry, dict):
                 continue
             tags = entry.get("tags")
+            raw_id = entry.get("id", instant_id)
             manifest[str(instant_id)] = {
-                "id": entry.get("id", instant_id),
+                "id": raw_id if isinstance(raw_id, str) else str(raw_id),
                 "title": entry.get("title", ""),
                 "category": entry.get("category", ""),
                 "path": entry.get("path", ""),
                 "tags": list(tags) if isinstance(tags, list) else [],
             }
         return manifest
+
+    def _quarantine(self, reason: str) -> None:
+        """Move the unusable manifest aside and warn once, naming the new path."""
+
+        quarantined = self.corrupt_manifest_path
+        try:
+            os.replace(self.manifest_path, quarantined)
+        except OSError as error:
+            warnings.warn(
+                f"{reason}: could not move it to {quarantined} ({error}); "
+                "the bank starts empty and the file is still at "
+                f"{self.manifest_path}",
+                stacklevel=3,
+            )
+            return
+        warnings.warn(
+            f"{reason}: moved to {quarantined}; the bank starts empty. "
+            f"Check {quarantined.name} before rebuilding the registry.",
+            stacklevel=3,
+        )

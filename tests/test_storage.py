@@ -206,8 +206,13 @@ def test_corrupt_manifest_starts_empty_and_can_be_rewritten(tmp_path):
     manifest_path = root / "manifest.json"
     manifest_path.write_text("{ this is not json", encoding="utf-8")
 
-    storage = StorageManager(root)
+    with pytest.warns(UserWarning, match="manifest.json.corrupt"):
+        storage = StorageManager(root)
     assert storage.manifest == {}
+
+    quarantined = root / "manifest.json.corrupt"
+    assert quarantined.read_text(encoding="utf-8") == "{ this is not json"
+    assert not manifest_path.exists()
 
     storage.record_download("abc", "Boom", "Cat", "cat/boom.mp3", ["boom"])
     storage.save()
@@ -228,7 +233,37 @@ def test_manifest_ignores_non_object_payload(tmp_path):
     root.mkdir()
     (root / "manifest.json").write_text('["not", "a", "mapping"]', encoding="utf-8")
 
-    storage = StorageManager(root)
+    with pytest.warns(UserWarning, match="manifest.json.corrupt"):
+        storage = StorageManager(root)
 
     assert storage.manifest == {}
     assert storage.entries() == []
+    assert (root / "manifest.json.corrupt").exists()
+
+
+def test_load_coerces_a_non_string_id(tmp_path):
+    root = tmp_path / "downloads"
+    root.mkdir()
+    (root / "manifest.json").write_text(
+        json.dumps(
+            {"7": {"id": 7, "title": "Numeric", "category": "Cat", "path": "cat/n.mp3", "tags": []}}
+        ),
+        encoding="utf-8",
+    )
+
+    storage = StorageManager(root)
+
+    assert storage.entries()[0]["id"] == "7"
+
+
+def test_entries_ignores_a_non_sequence_tags_value(tmp_path):
+    storage = StorageManager(tmp_path / "downloads")
+    storage.manifest["x"] = {
+        "id": "x",
+        "title": "X",
+        "category": "Cat",
+        "path": "cat/x.mp3",
+        "tags": "boom",
+    }
+
+    assert storage.entries()[0]["tags"] == []

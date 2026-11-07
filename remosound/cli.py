@@ -350,6 +350,8 @@ def _print_plan(
         f"Dry run: would download {len(pending)} sound(s); "
         f"{len(skipped)} already in the bank; no files written."
     )
+    if args.remotion_public is not None:
+        console.print(f"Dry run: would stage into {escape(str(args.remotion_public))}.")
 
 
 def _print_summary(
@@ -407,8 +409,36 @@ def _registry_paths(out: Path) -> tuple[Path, Path]:
 def _write_index(storage: StorageManager, registry: Path, helper: Path) -> None:
     """Write ``sound-bank.json`` and then ``sound-bank.ts`` from the manifest."""
 
+    _refuse_to_empty_the_registry(storage, registry)
     export_registry(storage.entries(), registry)
     export_typescript_helper(registry, helper)
+
+
+def _refuse_to_empty_the_registry(storage: StorageManager, registry: Path) -> None:
+    """Raise when an empty manifest would replace a registry full of sounds.
+
+    An empty bank is usually a lost or corrupt manifest, not an intentional
+    reset. Overwriting ``sound-bank.json`` (and then copying it into a
+    Remotion ``public/``) would destroy the only remaining index of audio the
+    user still has on disk, so the CLI stops and points at the quarantine file.
+    """
+
+    if storage.entries() or not registry.exists():
+        return
+    try:
+        existing = json.loads(registry.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        # An unreadable registry holds nothing worth preserving.
+        return
+    sounds = existing.get("sounds") if isinstance(existing, dict) else None
+    if not isinstance(sounds, list) or not sounds:
+        return
+
+    raise ValueError(
+        f"{registry} already lists {len(sounds)} sound(s) but the manifest is empty; "
+        f"refusing to overwrite it. Check {storage.corrupt_manifest_path} "
+        "and restore the bank before rebuilding."
+    )
 
 
 def _writes_bank(args: argparse.Namespace) -> bool:

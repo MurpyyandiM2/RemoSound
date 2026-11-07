@@ -166,6 +166,34 @@ async def test_crawl_category_percent_encodes_the_category_name():
     assert requested_urls == [f"{BASE_URL}/en/categories/movie%20clips/"]
 
 
+async def test_crawl_dedupes_repeated_ids_within_one_page():
+    """A duplicated card must not consume one of the ``limit`` slots."""
+
+    html = """
+    <div class="instant">
+      <a class="instant-link" href="/en/instant/boom-1/">Boom</a>
+      <button onmousedown="play('/media/sounds/boom.mp3')"></button>
+    </div>
+    <div class="instant">
+      <a class="instant-link" href="/en/instant/boom-1/">Boom</a>
+      <button onmousedown="play('/media/sounds/boom.mp3')"></button>
+    </div>
+    <div class="instant">
+      <a class="instant-link" href="/en/instant/pop-2/">Pop</a>
+      <button onmousedown="play('/media/sounds/pop.mp3')"></button>
+    </div>
+    """
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text=html)
+
+    scraper, client = scraper_for(handler)
+    async with client:
+        buttons = await scraper.crawl_trending(limit=2)
+
+    assert [button.id for button in buttons] == ["boom-1", "pop-2"]
+
+
 async def test_crawl_stops_when_page_numbers_are_ignored():
     """A server that serves the same page for every ?page must not be looped on."""
 

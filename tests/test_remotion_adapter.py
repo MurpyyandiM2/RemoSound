@@ -95,6 +95,28 @@ def test_export_registry_handles_an_empty_bank(tmp_path):
     assert registry == {"version": 1, "sounds": []}
 
 
+def test_export_registry_leaves_no_temporary_file(tmp_path, entries):
+    output = tmp_path / "sound-bank.json"
+
+    export_registry(entries, output)
+
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["sound-bank.json"]
+
+
+def test_export_registry_keeps_the_previous_file_when_writing_fails(tmp_path):
+    output = tmp_path / "sound-bank.json"
+    export_registry([], output)
+    before = output.read_text(encoding="utf-8")
+
+    with pytest.raises(TypeError):
+        export_registry(
+            [{"id": {1, 2}, "title": "Bad", "category": "sfx", "path": "sfx/bad.mp3"}], output
+        )
+
+    assert output.read_text(encoding="utf-8") == before
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["sound-bank.json"]
+
+
 # --- export_typescript_helper ---------------------------------------------
 
 
@@ -145,6 +167,18 @@ def test_export_typescript_helper_handles_an_empty_bank(tmp_path):
     assert "export const SOUND_BANK: SoundEntry[] = []" in source
 
 
+def test_export_typescript_helper_replaces_an_existing_file_atomically(tmp_path, entries):
+    registry_path = export_registry(entries, tmp_path / "sound-bank.json")
+    output = tmp_path / "sound-bank.ts"
+    output.write_text("stale", encoding="utf-8")
+
+    export_typescript_helper(registry_path, output)
+
+    assert "export const SOUND_BANK" in output.read_text(encoding="utf-8")
+    assert "stale" not in output.read_text(encoding="utf-8")
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["sound-bank.json", "sound-bank.ts"]
+
+
 # --- registry validation ---------------------------------------------------
 
 
@@ -189,6 +223,23 @@ def test_stage_into_remotion_copies_audio_and_registry(tmp_path, entries):
     assert (public_dir / "remosound" / "sfx" / "Vine Boom-abc123.mp3").read_bytes() == b"ID3-audio"
     staged = json.loads((public_dir / "sound-bank.json").read_text(encoding="utf-8"))
     assert staged["sounds"][0]["src"] == "remosound/sfx/Vine Boom-abc123.mp3"
+
+
+def test_staging_replaces_the_registry_atomically(tmp_path, entries):
+    sound_root = tmp_path / "downloads"
+    audio = sound_root / "sfx" / "Vine Boom-abc123.mp3"
+    audio.parent.mkdir(parents=True)
+    audio.write_bytes(b"ID3-audio")
+    registry_path = export_registry(entries, tmp_path / "sound-bank.json")
+    public_dir = tmp_path / "public"
+    public_dir.mkdir()
+    (public_dir / "sound-bank.json").write_text("stale", encoding="utf-8")
+
+    stage_into_remotion(registry_path, sound_root, public_dir)
+
+    staged = json.loads((public_dir / "sound-bank.json").read_text(encoding="utf-8"))
+    assert staged["sounds"][0]["id"] == "abc123"
+    assert sorted(path.name for path in public_dir.iterdir()) == ["remosound", "sound-bank.json"]
 
 
 def test_stage_into_remotion_reports_a_missing_source(tmp_path, entries):
