@@ -1,0 +1,56 @@
+---
+description: RemoSound sound-bank downloader
+alwaysApply: true
+---
+
+# RemoSound
+
+Python CLI that bulk-downloads MyInstants sound effects into `downloads/` and
+matches them to Remotion scenes. `run.py` is the only entrypoint — extend it
+instead of adding scripts.
+
+## Environment
+
+Dependencies live in `.venv/`. The canonical spelling is the explicit
+interpreter path; `.venv\Scripts\activate` shortens it to `python`.
+
+Raw PowerShell is broken on this host (a `caveman shrink` hook rejects bare
+`git ...` / `python ...` with `Unexpected token 'shrink'`). Wrap every shell
+command in `cmd /c "..."` and use `&`, never `&&`, inside one call:
+
+```bat
+cmd /c "git status"
+cmd /c ".venv\Scripts\python.exe -m pytest -q"
+```
+
+## Commands
+
+```bat
+.venv\Scripts\python.exe run.py
+.venv\Scripts\python.exe run.py --trending --limit 20
+.venv\Scripts\python.exe run.py --category memes --limit 20
+.venv\Scripts\python.exe run.py --search "boom" --limit 20
+.venv\Scripts\python.exe run.py --match "explosion in the distance, dust settling"
+.venv\Scripts\python.exe run.py --rebuild-index
+.venv\Scripts\python.exe -m pytest -q
+```
+
+`run.py` with no flags opens the interactive menu.
+
+## Module map
+
+`run.py` → `cli` → `matcher` / `remotion_adapter`, behind
+`scraper` → `downloader` → `storage`. Lower layers never import `cli`.
+
+## Hard rules
+
+- Max 5 concurrent downloads (`--max-concurrency` only lowers it), ≥0.5 s
+  between page fetches, exponential backoff on HTTP 429 (0.5 s, 1 s, 2 s, then
+  give up after 3 retries).
+- Never re-download anything already in `downloads/manifest.json`; partial
+  files use `.part` and are removed on failure.
+- Sanitize every filename for Windows and never produce an empty stem.
+- `downloads/` and `sound-bank.json` are runtime data, not source — never
+  commit or hand-edit them.
+- Audio is community-uploaded MyInstants content; verify rights before
+  commercial use (see `README.md`).
