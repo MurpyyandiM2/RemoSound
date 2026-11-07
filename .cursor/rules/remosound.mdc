@@ -23,7 +23,10 @@ cmd /c "git status"
 cmd /c ".venv\Scripts\python.exe -m pytest -q"
 ```
 
-## Commands
+## Canonical commands
+
+`run.py` is the single entrypoint. Do not add parallel scripts; extend the CLI.
+Do not re-implement scraping inline; call `run.py`.
 
 ```bat
 .venv\Scripts\python.exe run.py
@@ -32,10 +35,25 @@ cmd /c ".venv\Scripts\python.exe -m pytest -q"
 .venv\Scripts\python.exe run.py --search "boom" --limit 20
 .venv\Scripts\python.exe run.py --match "explosion in the distance, dust settling"
 .venv\Scripts\python.exe run.py --rebuild-index
+.venv\Scripts\python.exe run.py --trending --limit 20 --dry-run
+.venv\Scripts\python.exe run.py --trending --remotion-public .\my-video\public
 .venv\Scripts\python.exe -m pytest -q
 ```
 
-`run.py` with no flags opens the interactive menu.
+`run.py` with no flags opens the interactive menu; the mode flags
+(`--trending`, `--category`, `--search`, `--match`, `--rebuild-index`) are
+mutually exclusive.
+
+| Flag | Meaning |
+| --- | --- |
+| `--limit N` | Sounds to collect; default 100, capped at 5000 per run |
+| `--out DIR` | Bank root, default `downloads` |
+| `--dry-run` | Print the plan; write nothing |
+| `--max-concurrency N` | Parallel downloads, default 5; may only lower the cap |
+| `--remotion-public DIR` | Stage the bank into a Remotion `public/`; needs a batch mode or `--rebuild-index` |
+
+`--match` prints `{"context", "matches"}` JSON on stdout and exits 0. Exit
+codes: `0` success, `1` runtime failure, `2` usage error.
 
 ## Module map
 
@@ -47,6 +65,7 @@ Lower layers never import `cli`; nothing but `run.py` touches `sys.argv`.
 - Max 5 concurrent downloads (`--max-concurrency` only lowers it), ≥0.5 s
   between page fetches, exponential backoff on HTTP 429 (0.5 s, 1 s, 2 s, then
   give up after 3 retries).
+- Max 5000 sounds per run (`--limit` cannot request more).
 - Never re-download anything already in `downloads/manifest.json`; partial
   files use `.part` and are removed on failure.
 - Sanitize every filename for Windows and never produce an empty stem.

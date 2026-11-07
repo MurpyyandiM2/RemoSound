@@ -6,8 +6,8 @@ Remotion video projects. This file is the operating guide for every agent
 working in this repository — OpenCode, Claude Code, Cursor, Antigravity, or a
 human in a shell.
 
-**Prefer the CLI.** Drive RemoSound through `run.py` (and its modules); never
-re-implement scraping or downloading inline in an ad-hoc script.
+**Prefer the CLI.** Drive RemoSound through `run.py` (and its modules); extend
+the CLI instead of adding scripts.
 
 ## Environment
 
@@ -48,6 +48,7 @@ re-implement scraping or downloading inline in an ad-hoc script.
 ## Canonical commands
 
 `run.py` is the single entrypoint. Do not add parallel scripts; extend the CLI.
+Do not re-implement scraping inline; call `run.py`.
 
 ```bat
 .venv\Scripts\python.exe run.py
@@ -56,10 +57,25 @@ re-implement scraping or downloading inline in an ad-hoc script.
 .venv\Scripts\python.exe run.py --search "boom" --limit 20
 .venv\Scripts\python.exe run.py --match "explosion in the distance, dust settling"
 .venv\Scripts\python.exe run.py --rebuild-index
+.venv\Scripts\python.exe run.py --trending --limit 20 --dry-run
+.venv\Scripts\python.exe run.py --trending --remotion-public .\my-video\public
 .venv\Scripts\python.exe -m pytest -q
 ```
 
-`run.py` with no flags opens the interactive menu.
+`run.py` with no flags opens the interactive menu; the mode flags
+(`--trending`, `--category`, `--search`, `--match`, `--rebuild-index`) are
+mutually exclusive.
+
+| Flag | Meaning |
+| --- | --- |
+| `--limit N` | Sounds to collect; default 100, capped at 5000 per run |
+| `--out DIR` | Bank root, default `downloads` |
+| `--dry-run` | Print the plan; write nothing |
+| `--max-concurrency N` | Parallel downloads, default 5; may only lower the cap |
+| `--remotion-public DIR` | Stage the bank into a Remotion `public/`; needs a batch mode or `--rebuild-index` |
+
+`--match` prints `{"context", "matches"}` JSON on stdout and exits 0. Exit
+codes: `0` success, `1` runtime failure, `2` usage error.
 
 ## Module map
 
@@ -84,6 +100,7 @@ Lower layers never import `cli`; nothing but `run.py` touches `sys.argv`.
 - At most **5 concurrent downloads** (`--max-concurrency` may lower this,
   never raise it).
 - At least **0.5 s between page fetches**.
+- At most **5000 sounds per run** — `--limit` cannot request more.
 - Honor HTTP **429** with exponential backoff: 0.5 s, 1 s, 2 s, then give up
   after 3 retries.
 - Anything already recorded in `downloads/manifest.json` is never downloaded
