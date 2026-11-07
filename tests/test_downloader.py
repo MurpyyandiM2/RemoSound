@@ -19,11 +19,16 @@ AUDIO = b"ID3fake"
 BASE_URL = "https://www.myinstants.com"
 
 
-def make_button(instant_id: str = "boom-1", title: str = "Boom", category: str = "memes") -> InstantButton:
+def make_button(
+    instant_id: str = "boom-1",
+    title: str = "Boom",
+    category: str = "memes",
+    audio_url: str | None = None,
+) -> InstantButton:
     return InstantButton(
         id=instant_id,
         title=title,
-        audio_url=f"{BASE_URL}/media/sounds/{instant_id}.mp3",
+        audio_url=audio_url or f"{BASE_URL}/media/sounds/{instant_id}.mp3",
         category=category,
         page_url=f"{BASE_URL}/instant/{instant_id}/",
     )
@@ -195,6 +200,117 @@ async def test_download_one_keeps_the_filename_under_150_characters(tmp_path):
     assert path is not None
     assert len(path.name) < 150
     assert path.name.endswith("-boom-1.mp3")
+
+
+def assert_contained(path, storage) -> None:
+    """The written file must be the single, resolved file inside its folder."""
+
+    files = list(path.parent.iterdir())
+    assert files == [path]
+    assert path.resolve().parent == path.parent.resolve()
+    assert path.resolve().is_relative_to(storage.root.resolve())
+    assert path.name.endswith(".mp3")
+
+
+async def test_download_one_contains_a_traversal_id_inside_the_category_folder(tmp_path):
+    downloader, storage, client = make_downloader(tmp_path, audio_handler())
+    button = make_button(instant_id=r"..\..\..\..\planted", title="Evil", audio_url=f"{BASE_URL}/media/sounds/x.mp3")
+
+    async with client:
+        path = await downloader.download_one(button)
+
+    assert path is not None
+    assert_contained(path, storage)
+    assert path.parent == storage.category_dir("memes")
+    assert storage.is_downloaded(r"..\..\..\..\planted")
+    assert not (tmp_path / "planted.mp3").exists()
+
+
+async def test_download_one_sanitizes_a_path_separator_in_the_id(tmp_path):
+    downloader, storage, client = make_downloader(tmp_path, audio_handler())
+    button = make_button(instant_id="evil/planted", title="Evil", audio_url=f"{BASE_URL}/media/sounds/x.mp3")
+
+    async with client:
+        path = await downloader.download_one(button)
+
+    assert path is not None
+    assert_contained(path, storage)
+    assert path.parent == storage.category_dir("memes")
+
+
+async def test_download_one_sanitizes_a_colon_in_the_id_without_residue(tmp_path):
+    downloader, storage, client = make_downloader(tmp_path, audio_handler())
+    button = make_button(instant_id="boom:1", title="Boom", audio_url=f"{BASE_URL}/media/sounds/x.mp3")
+
+    async with client:
+        path = await downloader.download_one(button)
+
+    assert path is not None
+    assert ":" not in path.name
+    assert path.name == "Boom-boom1.mp3"
+    assert_contained(path, storage)
+    assert list(path.parent.glob("*.part")) == []
+
+
+async def test_download_one_keeps_a_300_character_id_under_150_characters(tmp_path):
+    downloader, storage, client = make_downloader(tmp_path, audio_handler())
+    button = make_button(instant_id="x" * 300, title="Boom", audio_url=f"{BASE_URL}/media/sounds/x.mp3")
+
+    async with client:
+        path = await downloader.download_one(button)
+
+    assert path is not None
+    assert len(path.name) < 150
+    assert_contained(path, storage)
+    assert storage.is_downloaded("x" * 300)
+
+
+async def test_concurrent_downloads_of_one_button_fetch_once(tmp_path):
+    calls: list = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        # yield so a second task can pass its pre-check before this one records
+        await asyncio.sleep(0)
+        calls.append(request)
+        return httpx.Response(200, content=AUDIO)
+
+    downloader, storage, client = make_downloader(tmp_path, handler)
+    button = make_button()
+
+    async with client:
+        results = await asyncio.gather(downloader.download_one(button), downloader.download_one(button))
+
+    assert len(calls) == 1
+    paths = [path for path in results if path is not None]
+    assert len(paths) == 1
+    assert paths[0].read_bytes() == AUDIO
+
+
+async def test_download_one_rejects_an_empty_body_without_leaving_files(tmp_path):
+    downloader, storage, client = make_downloader(tmp_path, lambda request: httpx.Response(200, content=b""))
+
+    async with client:
+        path = await downloader.download_one(make_button())
+
+    assert path is None
+    assert list(storage.category_dir("memes").iterdir()) == []
+    assert not storage.is_downloaded("boom-1")
+
+
+async def test_download_one_still_returns_the_path_when_saving_the_manifest_fails(tmp_path, monkeypatch):
+    downloader, storage, client = make_downloader(tmp_path, audio_handler())
+
+    def broken_save() -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(storage, "save", broken_save)
+
+    async with client:
+        path = await downloader.download_one(make_button())
+
+    assert path is not None
+    assert path.read_bytes() == AUDIO
+    assert storage.is_downloaded("boom-1")
 
 
 def test_constructor_clamps_max_concurrency_to_five(tmp_path):

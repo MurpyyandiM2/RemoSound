@@ -44,6 +44,14 @@ RETRY_DELAYS: tuple[float, ...] = (0.5, 1.0, 2.0)
 REQUEST_TIMEOUT = 20.0
 CHUNK_SIZE = 64 * 1024
 
+# A remote id is untrusted HTML content; it is sanitized before it becomes part
+# of a filename, but kept verbatim as the manifest and dedupe key.
+MAX_ID_LENGTH = 80
+
+
+class EmptyDownloadError(Exception):
+    """The server answered 200 but delivered no audio bytes."""
+
 
 class BulkDownloader:
     """Download buttons into the storage bank, five at a time at most."""
@@ -57,6 +65,8 @@ class BulkDownloader:
         self.storage = storage
         self.max_concurrency = max(MIN_CONCURRENCY, min(MAX_CONCURRENCY, max_concurrency))
         self.semaphore = asyncio.Semaphore(self.max_concurrency)
+        self._id_locks: dict[str, asyncio.Lock] = {}
+        self._id_lock_users: dict[str, int] = {}
         self._client = client
         self._owns_client = client is None
 
@@ -85,8 +95,9 @@ class BulkDownloader:
     async def download_one(self, button: InstantButton) -> Path | None:
         """Download one button and return the written path.
 
-        ``None`` means nothing was written: the id is already recorded, the
-        target file already exists, or the transfer kept failing.
+        ``None`` means nothing was written: the id is already recorded (perhaps
+        by a concurrent caller that held the same id lock), the target file
+        already exists, or the transfer kept failing.
         """
 
         if self.storage.is_downloaded(button.id):
@@ -96,28 +107,37 @@ class BulkDownloader:
         if target.exists():
             return None
 
-        async with self.semaphore:
-            # Re-check under the semaphore: a queued duplicate may have
-            # finished while this task waited for its slot.
-            if self.storage.is_downloaded(button.id) or target.exists():
-                return None
-            try:
-                await self._transfer(button, target)
-            except (httpx.HTTPError, OSError) as error:
-                log.warning("could not download %s: %s", button.id, error)
-                return None
+        # One lock per instant id. A second caller for the same id waits here
+        # instead of racing on the same target and ``.part`` paths, then finds
+        # the manifest entry its predecessor wrote and returns None.
+        lock = self._id_lock_for(button.id)
+        try:
+            async with lock, self.semaphore:
+                if self.storage.is_downloaded(button.id) or target.exists():
+                    return None
+                try:
+                    await self._transfer(button, target)
+                except (httpx.HTTPError, OSError, EmptyDownloadError) as error:
+                    log.warning("could not download %s: %s", button.id, error)
+                    return None
 
-            # Mutate and persist without an intervening await, so concurrent
-            # record/save pairs cannot lose one another's entries.
-            self.storage.record_download(
-                instant_id=button.id,
-                title=button.title,
-                category=button.category,
-                relative_path=target.relative_to(self.storage.root).as_posix(),
-                tags=[],
-            )
-            self.storage.save()
-            return target
+                # Mutate and persist without an intervening await, so concurrent
+                # record/save pairs cannot lose one another's entries.
+                try:
+                    self.storage.record_download(
+                        instant_id=button.id,
+                        title=button.title,
+                        category=button.category,
+                        relative_path=target.relative_to(self.storage.root).as_posix(),
+                        tags=[],
+                    )
+                    self.storage.save()
+                except OSError as error:
+                    # The audio is on disk; only the dedupe record is missing.
+                    log.warning("could not record %s in the manifest: %s", button.id, error)
+                return target
+        finally:
+            self._release_id_lock(button.id)
 
     async def download_batch(
         self,
@@ -155,21 +175,47 @@ class BulkDownloader:
         return [path for path in results if path is not None]
 
     def _target_path(self, button: InstantButton) -> Path:
-        """Return the file the button downloads to, with a Windows-safe name."""
+        """Return the file the button downloads to, with a Windows-safe name.
 
-        suffix = f"-{button.id}.mp3"
-        stem = sanitize_filename(button.title, fallback=button.id, max_length=MAX_FILENAME_LENGTH)
+        The id is remote content, so it is sanitized before it reaches disk;
+        ``button.id`` itself stays the manifest and dedupe key.
+        """
+
+        safe_id = sanitize_filename(button.id, fallback="sound", max_length=MAX_ID_LENGTH)
+        suffix = f"-{safe_id}.mp3"
         # one character of headroom keeps the whole name strictly under the cap
-        stem = stem[: max(MAX_FILENAME_LENGTH - len(suffix) - 1, 1)].rstrip(" .")
+        budget = max(MAX_FILENAME_LENGTH - len(suffix) - 1, 1)
+        stem = sanitize_filename(button.title, fallback=safe_id, max_length=budget)
+        stem = stem[:budget].rstrip(" .")
         if not stem:
-            stem = sanitize_filename(button.id, fallback="sound", max_length=MAX_FILENAME_LENGTH)
+            stem = safe_id[:budget].rstrip(" .") or "sound"
         return self.storage.category_dir(button.category) / f"{stem}{suffix}"
+
+    def _id_lock_for(self, instant_id: str) -> asyncio.Lock:
+        """Return the lock guarding ``instant_id``, counting a new user."""
+
+        self._id_lock_users[instant_id] = self._id_lock_users.get(instant_id, 0) + 1
+        lock = self._id_locks.get(instant_id)
+        if lock is None:
+            lock = self._id_locks[instant_id] = asyncio.Lock()
+        return lock
+
+    def _release_id_lock(self, instant_id: str) -> None:
+        """Drop one user of an id lock, removing it when nobody is left."""
+
+        remaining = self._id_lock_users.get(instant_id, 1) - 1
+        if remaining > 0:
+            self._id_lock_users[instant_id] = remaining
+            return
+        self._id_locks.pop(instant_id, None)
+        self._id_lock_users.pop(instant_id, None)
 
     async def _transfer(self, button: InstantButton, target: Path) -> None:
         """Stream ``button.audio_url`` to ``target`` via a ``.part`` file.
 
-        The partial file is removed on every failure path, and the final rename
-        happens only after the last chunk is on disk.
+        The partial file is removed on every failure path, an empty body is
+        rejected before the rename, and the final rename happens only after the
+        last chunk is on disk.
         """
 
         part = target.with_suffix(target.suffix + ".part")
@@ -183,6 +229,8 @@ class BulkDownloader:
                         raise
                     part.unlink(missing_ok=True)
                     await asyncio.sleep(RETRY_DELAYS[attempt])
+            if part.stat().st_size == 0:
+                raise EmptyDownloadError(f"{button.audio_url} returned an empty body")
             os.replace(part, target)
         except BaseException:
             part.unlink(missing_ok=True)
