@@ -7,9 +7,11 @@ or the filesystem, so a match is cheap enough to run per scene while editing.
 Scene text is tokenized, then expanded through :data:`CUE_MAP`: an Indonesian
 cue such as ``"muncul"`` adds the search terms ``pop``, ``appear`` and
 ``whoosh``, which is how a title like ``"Pop Whoosh"`` gets found from a scene
-written in Indonesian. Every term present in a sound's title scores
-:data:`TITLE_WEIGHT` — as a whole token or as a compact substring, so a cue
-like ``sadtrombone`` reaches ``"Sad Trombone"`` — every term in its tags scores
+written in Indonesian. Every term present in a sound's title as a whole token
+scores :data:`TITLE_WEIGHT`; cue expansion terms of at least
+:data:`MIN_COMPACT_LENGTH` may also score by appearing inside the title with
+every separator removed, so ``sadtrombone`` reaches ``"Sad Trombone"``. Raw
+scene words are never substring-matched. Every term in a sound's tags scores
 :data:`TAG_WEIGHT`, and every term in its category scores
 :data:`CATEGORY_WEIGHT`.
 """
@@ -51,6 +53,10 @@ CUE_MAP: dict[str, list[str]] = {
 TITLE_WEIGHT = 3
 TAG_WEIGHT = 2
 CATEGORY_WEIGHT = 1
+
+# A cue expansion shorter than this never substring-matches a title; short
+# strings are exactly the ones that hit unrelated words by accident.
+MIN_COMPACT_LENGTH = 4
 
 _WORD = re.compile(r"[a-z0-9]+")
 _NON_WORD = re.compile(r"[^a-z0-9]+")
@@ -109,14 +115,14 @@ class ContextualSoundMatcher:
         if top_k <= 0:
             return []
 
-        terms = self._query_terms(context_text)
+        terms, compact_terms = self._query_terms(context_text)
         if not terms:
             return []
 
         scored = []
         for sound in self._sounds:
             score = (
-                TITLE_WEIGHT * sum(1 for term in terms if sound.title_hits(term))
+                TITLE_WEIGHT * (len(terms & sound.title_tokens) + sound.compact_hits(compact_terms))
                 + TAG_WEIGHT * len(terms & sound.tag_tokens)
                 + CATEGORY_WEIGHT * len(terms & sound.category_tokens)
             )
@@ -137,13 +143,31 @@ class ContextualSoundMatcher:
         return scored[:top_k]
 
     @staticmethod
-    def _query_terms(context_text: str) -> set[str]:
+    def _query_terms(context_text: str) -> tuple[set[str], frozenset[str]]:
+        """Return the query terms and the subset allowed to match compactly.
+
+        The first set is every term the query contributes — scene tokens plus
+        cue expansions — matched against whole title tokens only. The second is
+        the cue expansions of at least :data:`MIN_COMPACT_LENGTH` characters
+        that the scene text did not already contain; those may also match as a
+        substring of the compacted title.
+
+        Restricting compact matching to cue terms is what keeps ordinary scene
+        words from firing by accident: ``"in"`` is a substring of
+        ``"coinpickup"``, but it arrives as a raw token, not as a cue.
+        """
+
         tokens = _tokens(context_text)
         terms = set(tokens)
+        expansions: set[str] = set()
         for sequence, expansion in _CUE_SEQUENCES:
             if _contains(tokens, sequence):
-                terms.update(expansion)
-        return terms
+                expansions.update(expansion)
+        terms.update(expansions)
+        compact = frozenset(
+            term for term in expansions if len(term) >= MIN_COMPACT_LENGTH and term not in tokens
+        )
+        return terms, compact
 
     @staticmethod
     def _prepare(entry: dict) -> "_Sound":
@@ -174,16 +198,12 @@ class _Sound:
     tag_tokens: frozenset[str]
     category_tokens: frozenset[str]
 
-    def title_hits(self, term: str) -> bool:
-        """Whether ``term`` appears in the title as a token or as compact text.
+    def compact_hits(self, terms: frozenset[str] | set[str]) -> int:
+        """How many cue terms appear inside the compacted title.
 
-        Compact matching is what lets a multi-word cue such as ``sadtrombone``
-        reach ``"Sad Trombone"`` and an inflected cue such as ``screamer``
-        reach ``"Screamers"``. A single character is never compact-matched: it
-        would hit almost every title. A term that is already a title token is
-        not counted twice.
+        Only cue expansion terms are ever passed here. A term that already
+        matched a whole title token is skipped so one cue cannot score twice,
+        and :data:`MIN_COMPACT_LENGTH` keeps short expansions out entirely.
         """
 
-        if term in self.title_tokens:
-            return True
-        return len(term) > 1 and term in self.title_compact
+        return sum(1 for term in terms if term not in self.title_tokens and term in self.title_compact)

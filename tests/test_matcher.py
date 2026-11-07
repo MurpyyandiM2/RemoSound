@@ -151,14 +151,40 @@ def test_compact_cue_term_matches_a_multi_word_title():
     assert results[0]["score"] == 3  # one title hit, at TITLE_WEIGHT
 
 
-def test_compact_term_matches_an_inflected_title():
-    matcher = ContextualSoundMatcher([_entry("scream-1", "Screamers", "scary", [])])
+def test_compact_cue_term_matches_an_inflected_title():
+    matcher = ContextualSoundMatcher([_entry("scream-1", "Screamer", "scary", [])])
 
-    # "screamer" is not a token of "Screamers", but it is a substring.
-    results = matcher.match("screamer")
+    # "kaget" expands to "scream", which is not a token of "Screamer".
+    results = matcher.match("kaget banget dong")
 
     assert [result["id"] for result in results] == ["scream-1"]
     assert results[0]["score"] == 3
+
+
+def test_raw_scene_words_never_compact_match_a_title():
+    """Only cue expansions bridge; short scene words must not hit by accident."""
+
+    entries = [
+        _entry("boom-1", "Vine Boom", "memes", []),
+        _entry("coin-1", "Coin Pickup", "games", []),
+        _entry("win-1", "Win Fanfare", "sfx", []),
+    ]
+
+    # "in" is a substring of "coinpickup" and "winfanfare".
+    assert ContextualSoundMatcher(entries).match("explosion in the distance, dust settling") == []
+
+
+def test_two_letter_scene_word_does_not_hit_a_title():
+    matcher = ContextualSoundMatcher([_entry("ding-1", "Ding", "ui", [])])
+
+    # "di" is a substring of "ding"; it is a raw token, not a cue expansion.
+    assert matcher.match("di rumah") == []
+
+
+def test_the_gagal_cue_still_bridges_to_a_multi_word_title():
+    matcher = ContextualSoundMatcher([_entry("sad-1", "Sad Trombone", "sfx", [])])
+
+    assert [result["id"] for result in matcher.match("rencana tersebut gagal total")] == ["sad-1"]
 
 
 def test_compact_matching_does_not_double_count_a_token_hit():
@@ -168,7 +194,7 @@ def test_compact_matching_does_not_double_count_a_token_hit():
 
 
 def test_compact_matching_ignores_single_character_terms():
-    # Without the length guard, "a" would compact-match nearly every title.
+    # A one-character scene word is never compact-matched against a title.
     matcher = ContextualSoundMatcher([_entry("sad-1", "Sad Trombone", "sfx", [])])
 
     assert matcher.match("a") == []
