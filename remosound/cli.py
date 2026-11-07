@@ -72,6 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--match",
         metavar="TEXT",
         dest="match",
+        type=_non_empty,
         help=f"rank the bank against scene text and print JSON (top {MATCH_LIMIT})",
     )
     mode.add_argument(
@@ -118,6 +119,7 @@ def build_parser() -> argparse.ArgumentParser:
 async def main_async(argv: list[str] | None = None) -> int:
     """Parse ``argv`` and run one command, returning its exit code."""
 
+    _configure_stdout()
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.remotion_public is not None and not _writes_bank(args):
@@ -134,9 +136,12 @@ def main(argv: list[str] | None = None) -> int:
         return 130
 
 
-async def interactive_menu(console: Console) -> int:
-    """Ask for one of four operations, then run it.
+async def interactive_menu(args: argparse.Namespace, console: Console) -> int:
+    """Ask for one of four operations, then run it on the parsed flags.
 
+    ``args`` carries the options the user already supplied (``--dry-run``,
+    ``--out``, ``--limit``, ``--max-concurrency``); the menu only fills in the
+    missing mode, so the interactive path behaves like the flag-driven one.
     Kept separate from argument parsing so tests never need stdin.
     """
 
@@ -151,14 +156,18 @@ async def interactive_menu(console: Console) -> int:
 
     choice = Prompt.ask("Choose", choices=["1", "2", "3", "4"], default="1", console=console)
     if choice == "1":
-        argv = ["--trending"]
+        mode = {"trending": True}
     elif choice == "2":
-        argv = ["--category", _ask("Category", console)]
+        mode = {"category": _ask("Category", console)}
     elif choice == "3":
-        argv = ["--search", _ask("Query", console)]
+        mode = {"search": _ask("Query", console)}
     else:
-        argv = ["--match", _ask("Scene text", console)]
-    return await _dispatch(build_parser().parse_args(argv), console)
+        mode = {"match": _ask("Scene text", console)}
+
+    selected = argparse.Namespace(**vars(args))
+    for field, value in mode.items():
+        setattr(selected, field, value)
+    return await _dispatch(selected, console)
 
 
 async def _dispatch(args: argparse.Namespace, console: Console) -> int:
@@ -170,7 +179,7 @@ async def _dispatch(args: argparse.Namespace, console: Console) -> int:
         return await _run_rebuild(args, console)
     if args.trending or args.category is not None or args.search is not None:
         return await _run_batch(args, console)
-    return await interactive_menu(console)
+    return await interactive_menu(args, console)
 
 
 # --- match -----------------------------------------------------------------
@@ -188,7 +197,9 @@ def _run_match(args: argparse.Namespace, console: Console) -> int:
         _warn(f"No sound in {args.out} matches this scene text.")
 
     payload = {"context": args.match, "matches": matches}
-    sys.stdout.write(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+    # ASCII-only output keeps this stream-safe: on Windows a redirected stdout
+    # defaults to cp1252, and MyInstants titles routinely contain emoji.
+    sys.stdout.write(json.dumps(payload, ensure_ascii=True, indent=2) + "\n")
     return 0
 
 
@@ -367,6 +378,23 @@ def _print_summary(
 
 
 # --- shared helpers --------------------------------------------------------
+
+
+def _configure_stdout() -> None:
+    """Make stdout UTF-8 so redirected output never fails on remote titles.
+
+    Windows otherwise hands a redirected stream cp1252, which cannot encode the
+    emoji that appear in real MyInstants titles. Test doubles without a
+    ``reconfigure`` method are left alone.
+    """
+
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if reconfigure is None:
+        return
+    try:
+        reconfigure(encoding="utf-8", errors="replace")
+    except (OSError, ValueError):
+        return
 
 
 def _registry_paths(out: Path) -> tuple[Path, Path]:

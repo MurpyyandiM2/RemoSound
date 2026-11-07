@@ -5,7 +5,9 @@ replaced by an in-memory stand-in, and all output lands in a pytest
 ``tmp_path``. Nothing here reads stdin.
 """
 
+import io
 import json
+import sys
 
 import httpx
 import pytest
@@ -144,6 +146,12 @@ def test_limit_must_be_positive(value):
         build_parser().parse_args(["--limit", value])
 
 
+@pytest.mark.parametrize("value", ["", "   "])
+def test_match_rejects_blank_scene_text(value):
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["--match", value])
+
+
 def test_limit_is_capped_at_5000_per_run():
     args = build_parser().parse_args(["--limit", "99999"])
 
@@ -241,6 +249,34 @@ async def test_match_prints_machine_readable_json(tmp_path, capsys):
     assert payload["matches"][0]["path"] == "sfx/Win Fanfare-win-1.mp3"
 
 
+class Cp1252Stream:
+    """A stdout double that cannot encode emoji and has no ``reconfigure``."""
+
+    encoding = "cp1252"
+
+    def __init__(self):
+        self.buffer = io.BytesIO()
+
+    def write(self, text):
+        self.buffer.write(text.encode("cp1252", errors="strict"))
+        return len(text)
+
+    def flush(self):
+        pass
+
+
+async def test_match_json_survives_a_cp1252_stdout(tmp_path, monkeypatch):
+    bank = seed_bank(tmp_path, [("win-1", "Win Fanfare 🎉", "sfx")])
+    stream = Cp1252Stream()
+    monkeypatch.setattr(sys, "stdout", stream)
+
+    code = await main_async(["--match", "win", "--out", str(bank)])
+
+    payload = json.loads(stream.buffer.getvalue().decode("cp1252"))
+    assert code == 0
+    assert payload["matches"][0]["title"] == "Win Fanfare 🎉"
+
+
 async def test_match_against_a_missing_bank_returns_an_empty_list(tmp_path, capsys):
     code = await main_async(["--match", "win", "--out", str(tmp_path / "nothing")])
 
@@ -332,6 +368,37 @@ async def test_remotion_public_stages_a_successful_batch(tmp_path, monkeypatch):
     assert (public / "remosound" / "memes" / "Vine Boom-boom-1.mp3").exists()
 
 
+async def test_max_concurrency_is_forwarded_to_the_downloader(tmp_path, monkeypatch):
+    patch_crawl(monkeypatch, "crawl_trending", [make_button()])
+    monkeypatch.setattr(cli_module, "BulkDownloader", FakeDownloader)
+
+    code = await main_async(
+        ["--trending", "--limit", "1", "--max-concurrency", "2", "--out", str(tmp_path / "downloads")]
+    )
+
+    assert code == 0
+    assert FakeDownloader.instances[0].max_concurrency == 2
+
+
+async def test_staging_is_skipped_when_a_download_fails(tmp_path, monkeypatch, capsys):
+    buttons = [make_button("good-1", "Good One", "sfx"), make_button("bad-1", "Bad One", "sfx")]
+    patch_crawl(monkeypatch, "crawl_trending", buttons)
+    monkeypatch.setattr(cli_module, "BulkDownloader", FakeDownloader)
+    FakeDownloader.fail_ids = {"bad-1"}
+    bank = tmp_path / "downloads"
+    public = tmp_path / "public"
+
+    code = await main_async(
+        ["--trending", "--limit", "2", "--out", str(bank), "--remotion-public", str(public)]
+    )
+
+    output = capsys.readouterr().out
+    assert code == 1
+    assert "Skipped staging" in output
+    assert not (tmp_path / "sound-bank.json").exists()
+    assert not public.exists()
+
+
 async def test_search_flag_crawls_the_query(tmp_path, monkeypatch, capsys):
     seen = {}
 
@@ -376,13 +443,41 @@ def test_main_is_a_synchronous_wrapper(tmp_path):
 async def test_no_mode_flag_opens_the_interactive_menu(tmp_path, monkeypatch):
     seen = {}
 
-    async def fake_menu(console):
+    async def fake_menu(args, console):
         seen["called"] = True
+        seen["args"] = args
         return 0
 
     monkeypatch.setattr(cli_module, "interactive_menu", fake_menu)
 
-    code = await main_async([])
+    code = await main_async(["--limit", "7", "--out", str(tmp_path / "downloads")])
 
     assert code == 0
     assert seen["called"] is True
+    assert seen["args"].limit == 7
+
+
+async def test_dry_run_survives_interactive_menu_dispatch(tmp_path, monkeypatch, capsys):
+    seen = {}
+
+    async def crawl(self, limit=100):
+        seen["limit"] = limit
+        return [make_button()]
+
+    monkeypatch.setattr(MyInstantsScraper, "crawl_trending", crawl)
+    # Answer the menu without touching stdin: choice "1" is Trending.
+    monkeypatch.setattr(cli_module.Prompt, "ask", lambda *args, **kwargs: "1")
+
+    def exploding(*args, **kwargs):
+        raise AssertionError("a dry run must not download")
+
+    monkeypatch.setattr(cli_module, "BulkDownloader", exploding)
+    bank = tmp_path / "downloads"
+
+    code = await main_async(["--dry-run", "--limit", "7", "--out", str(bank)])
+
+    output = capsys.readouterr().out
+    assert code == 0
+    assert "Dry run" in output
+    assert seen["limit"] == 7
+    assert not bank.exists()

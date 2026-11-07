@@ -97,11 +97,30 @@ async def test_download_one_skips_a_manifest_entry_without_an_http_request(tmp_p
     assert len(calls) == 1
 
 
-async def test_download_one_skips_an_existing_file_even_without_a_manifest_entry(tmp_path):
+async def test_download_one_adopts_an_existing_file_without_a_manifest_entry(tmp_path):
     calls: list = []
     downloader, storage, client = make_downloader(tmp_path, audio_handler(calls))
     target = storage.category_dir("memes") / f"{sanitize_filename('Boom', fallback='boom-1')}-boom-1.mp3"
     target.write_bytes(AUDIO)
+
+    async with client:
+        path = await downloader.download_one(make_button())
+
+    assert path == target
+    assert calls == []
+    assert target.read_bytes() == AUDIO
+    assert storage.is_downloaded("boom-1")
+    entry = storage.manifest["boom-1"]
+    assert entry["path"] == target.relative_to(tmp_path).as_posix()
+    on_disk = json.loads(storage.manifest_path.read_text(encoding="utf-8"))
+    assert on_disk["boom-1"]["path"] == entry["path"]
+
+
+async def test_download_one_returns_none_when_the_id_is_already_recorded(tmp_path):
+    calls: list = []
+    downloader, storage, client = make_downloader(tmp_path, audio_handler(calls))
+    storage.record_download("boom-1", "Boom", "memes", "memes/Boom-boom-1.mp3", [])
+    storage.save()
 
     async with client:
         path = await downloader.download_one(make_button())

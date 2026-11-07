@@ -96,8 +96,10 @@ class BulkDownloader:
         """Download one button and return the written path.
 
         ``None`` means nothing was written: the id is already recorded (perhaps
-        by a concurrent caller that held the same id lock), the target file
-        already exists, or the transfer kept failing.
+        by a concurrent caller that held the same id lock) or the transfer kept
+        failing. A file that already exists on disk but is missing from the
+        manifest is adopted — recorded and returned — so an interrupted run
+        never re-downloads it or reports it as a failure.
         """
 
         if self.storage.is_downloaded(button.id):
@@ -105,7 +107,7 @@ class BulkDownloader:
 
         target = self._target_path(button)
         if target.exists():
-            return None
+            return self._adopt(button, target)
 
         # One lock per instant id. A second caller for the same id waits here
         # instead of racing on the same target and ``.part`` paths, then finds
@@ -113,8 +115,10 @@ class BulkDownloader:
         lock = self._id_lock_for(button.id)
         try:
             async with lock, self.semaphore:
-                if self.storage.is_downloaded(button.id) or target.exists():
+                if self.storage.is_downloaded(button.id):
                     return None
+                if target.exists():
+                    return self._adopt(button, target)
                 try:
                     await self._transfer(button, target)
                 except (httpx.HTTPError, OSError, EmptyDownloadError) as error:
@@ -123,18 +127,7 @@ class BulkDownloader:
 
                 # Mutate and persist without an intervening await, so concurrent
                 # record/save pairs cannot lose one another's entries.
-                try:
-                    self.storage.record_download(
-                        instant_id=button.id,
-                        title=button.title,
-                        category=button.category,
-                        relative_path=target.relative_to(self.storage.root).as_posix(),
-                        tags=[],
-                    )
-                    self.storage.save()
-                except OSError as error:
-                    # The audio is on disk; only the dedupe record is missing.
-                    log.warning("could not record %s in the manifest: %s", button.id, error)
+                self._record(button, target)
                 return target
         finally:
             self._release_id_lock(button.id)
@@ -190,6 +183,33 @@ class BulkDownloader:
         if not stem:
             stem = safe_id[:budget].rstrip(" .") or "sound"
         return self.storage.category_dir(button.category) / f"{stem}{suffix}"
+
+    def _adopt(self, button: InstantButton, target: Path) -> Path:
+        """Record an existing target file whose id is missing from the manifest.
+
+        An interrupted earlier run can leave audio on disk without a manifest
+        record. Adopting it makes the next run treat it as owned instead of
+        re-fetching it or reporting a phantom failure.
+        """
+
+        self._record(button, target)
+        return target
+
+    def _record(self, button: InstantButton, target: Path) -> None:
+        """Store ``target`` as the sound for ``button`` in the manifest."""
+
+        try:
+            self.storage.record_download(
+                instant_id=button.id,
+                title=button.title,
+                category=button.category,
+                relative_path=target.relative_to(self.storage.root).as_posix(),
+                tags=[],
+            )
+            self.storage.save()
+        except OSError as error:
+            # The audio is on disk; only the dedupe record is missing.
+            log.warning("could not record %s in the manifest: %s", button.id, error)
 
     def _id_lock_for(self, instant_id: str) -> asyncio.Lock:
         """Return the lock guarding ``instant_id``, counting a new user."""
