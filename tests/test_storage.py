@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from remosound.storage import StorageManager, sanitize_filename
 
 FORBIDDEN_CHARS = set('\\/:*?"<>|')
@@ -98,7 +100,7 @@ def test_manifest_round_trip(tmp_path):
 
     manifest_path = root / "manifest.json"
     assert manifest_path.is_file()
-    assert not (root / "manifest.json.tmp").exists()
+    assert list(root.glob("*.tmp")) == []
 
     reloaded = StorageManager(root)
     assert reloaded.is_downloaded("abc123") is True
@@ -112,6 +114,50 @@ def test_manifest_round_trip(tmp_path):
         }
     ]
     assert reloaded.manifest["abc123"]["title"] == "Boom"
+
+
+def test_entries_tolerates_missing_or_empty_tags(tmp_path):
+    storage = StorageManager(tmp_path / "downloads")
+    storage.manifest["empty"] = {
+        "id": "empty",
+        "title": "Empty",
+        "category": "Cat",
+        "path": "cat/empty.mp3",
+        "tags": [],
+    }
+    storage.manifest["missing"] = {
+        "id": "missing",
+        "title": "Missing",
+        "category": "Cat",
+        "path": "cat/missing.mp3",
+    }
+
+    entries = {entry["id"]: entry for entry in storage.entries()}
+
+    assert entries["empty"]["tags"] == []
+    assert entries["missing"]["tags"] == []
+
+
+def test_save_leaves_no_temporary_file_in_root(tmp_path):
+    root = tmp_path / "downloads"
+    storage = StorageManager(root)
+    storage.record_download("abc", "Boom", "Cat", "cat/boom.mp3", ["boom"])
+
+    storage.save()
+
+    assert sorted(path.name for path in root.iterdir()) == ["manifest.json"]
+
+
+def test_save_cleans_up_temp_file_when_serialization_fails(tmp_path):
+    root = tmp_path / "downloads"
+    storage = StorageManager(root)
+    storage.manifest["bad"] = {"id": "bad", "title": "Bad", "tags": {1, 2}}
+
+    with pytest.raises(TypeError):
+        storage.save()
+
+    assert list(root.glob("*.tmp")) == []
+    assert not (root / "manifest.json").exists()
 
 
 def test_record_download_twice_does_not_duplicate_entries(tmp_path):

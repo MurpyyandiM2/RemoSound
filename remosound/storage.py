@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import tempfile
 from pathlib import Path
 
 # Characters Windows forbids in filenames, plus ASCII control characters.
@@ -114,19 +115,24 @@ class StorageManager:
         return directory
 
     def save(self) -> None:
-        """Persist the manifest atomically via a temp file and ``os.replace``."""
+        """Persist the manifest atomically via a unique temp file and ``os.replace``."""
 
         self.root.mkdir(parents=True, exist_ok=True)
-        temp_path = self.manifest_path.with_suffix(".json.tmp")
-        with temp_path.open("w", encoding="utf-8") as handle:
-            json.dump(self.manifest, handle, ensure_ascii=False, indent=2, sort_keys=True)
-            handle.write("\n")
-        os.replace(temp_path, self.manifest_path)
+        descriptor, temp_name = tempfile.mkstemp(dir=self.root, prefix="manifest.", suffix=".tmp")
+        temp_path = Path(temp_name)
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                json.dump(self.manifest, handle, ensure_ascii=False, indent=2, sort_keys=True)
+                handle.write("\n")
+            os.replace(temp_path, self.manifest_path)
+        except BaseException:
+            temp_path.unlink(missing_ok=True)
+            raise
 
     def entries(self) -> list[dict]:
         """Return the manifest records as plain dicts."""
 
-        return [dict(entry, tags=list(entry["tags"])) for entry in self.manifest.values()]
+        return [dict(entry, tags=list(entry.get("tags") or [])) for entry in self.manifest.values()]
 
     def _load(self) -> dict[str, dict]:
         try:
