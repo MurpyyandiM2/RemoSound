@@ -66,6 +66,11 @@ def _titles(results):
         ("uang", ["coin", "cash", "money"]),
         ("koin", ["coin", "cash", "money"]),
         ("coin", ["coin", "cash", "money"]),
+        ("explosion", ["explosion", "boom", "blast", "impact"]),
+        ("ledakan", ["explosion", "boom", "blast", "impact"]),
+        ("meledak", ["explosion", "boom", "blast", "impact"]),
+        ("blast", ["explosion", "boom", "blast", "impact"]),
+        ("boom", ["explosion", "boom", "blast", "impact"]),
     ],
 )
 def test_cue_map_covers_the_required_families(cue, expected_terms):
@@ -138,6 +143,23 @@ def test_english_cues_match_too(entries):
     assert _titles(matcher.match("fail"))[:1] == ["Sad Trombone"]
 
 
+def test_explosion_scene_reaches_a_vine_boom_title():
+    """The README example must bridge to the boom family, not return nothing."""
+
+    matcher = ContextualSoundMatcher([_entry("boom-1", "Vine Boom", "memes", [])])
+
+    results = matcher.match("explosion in the distance, dust settling")
+
+    assert [result["id"] for result in results] == ["boom-1"]
+    assert results[0]["score"] == 3  # one title hit at TITLE_WEIGHT
+
+
+def test_ledakan_cue_reaches_a_vine_boom_title():
+    matcher = ContextualSoundMatcher([_entry("boom-1", "Vine Boom", "memes", [])])
+
+    assert [result["id"] for result in matcher.match("ledakan besar")] == ["boom-1"]
+
+
 # --- Compact matching ------------------------------------------------------
 
 
@@ -170,8 +192,9 @@ def test_raw_scene_words_never_compact_match_a_title():
         _entry("win-1", "Win Fanfare", "sfx", []),
     ]
 
-    # "in" is a substring of "coinpickup" and "winfanfare".
-    assert ContextualSoundMatcher(entries).match("explosion in the distance, dust settling") == []
+    # "in" is a substring of "coinpickup" and "winfanfare". The query carries no
+    # cue word, so nothing is allowed to bridge into those titles.
+    assert ContextualSoundMatcher(entries).match("in the distance, dust settling") == []
 
 
 def test_two_letter_scene_word_does_not_hit_a_title():

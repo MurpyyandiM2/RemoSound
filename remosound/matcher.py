@@ -48,6 +48,12 @@ CUE_MAP: dict[str, list[str]] = {
     "uang": ["coin", "cash", "money"],
     "koin": ["coin", "cash", "money"],
     "coin": ["coin", "cash", "money"],
+    # something explodes / a heavy hit lands
+    "explosion": ["explosion", "boom", "blast", "impact"],
+    "ledakan": ["explosion", "boom", "blast", "impact"],
+    "meledak": ["explosion", "boom", "blast", "impact"],
+    "blast": ["explosion", "boom", "blast", "impact"],
+    "boom": ["explosion", "boom", "blast", "impact"],
 }
 
 TITLE_WEIGHT = 3
