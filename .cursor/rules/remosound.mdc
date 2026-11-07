@@ -69,7 +69,7 @@ Lower layers never import `cli`; nothing but `run.py` touches `sys.argv`.
 - Never re-download anything already in `downloads/manifest.json`; partial
   files use `.part` and are removed on failure.
 - Sanitize every filename for Windows and never produce an empty stem.
-- `downloads/` and `sound-bank.json` are runtime data, not source — never
-  commit or hand-edit them.
+- `downloads/`, `sound-bank.json`, and `sound-bank.ts` are runtime data, not
+  source — never commit or hand-edit them.
 - Audio is community-uploaded MyInstants content; verify rights before
   commercial use (see `README.md`).

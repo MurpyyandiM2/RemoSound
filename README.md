@@ -128,31 +128,35 @@ and exports `SOUND_BANK`, the `SoundEntry` type, `getSound(id)`, and
 import { Audio, staticFile, Sequence } from "remotion";
 import { findSounds, getSound } from "./lib/sound-bank";
 
-export const ExplosionScene = () => (
-  <Sequence from={0} durationInFrames={90}>
-    <Audio src={staticFile(getSound("vine-boom")!.src)} />
-  </Sequence>
-);
-
-// or search the bank when you do not know the id
-const [cue] = findSounds("explosion");
+export const ExplosionScene = () => {
+  // ids are MyInstants detail slugs (for example "vine-boom-101") and
+  // getSound returns undefined for unknown ids, so fall back to a text search.
+  const cue = getSound("vine-boom-101") ?? findSounds("vine boom")[0];
+  if (!cue) return null;
+  return (
+    <Sequence from={0} durationInFrames={90}>
+      <Audio src={staticFile(cue.src)} />
+    </Sequence>
+  );
+};
 ```
 
 For a hand-written path, use the same layout directly:
 `staticFile("remosound/explosions/boom-01.mp3")`.
 
-`sound-bank.json` records `{id, title, category, file, src}` per sound, so you
-can run `--match "<scene text>"` first and paste the returned `path` (or the
-registry `src`) into `staticFile(...)`. `--match` prints
-`{"context": "...", "matches": [{"id", "title", "category", "path", "score"}]}`
-on stdout and exits 0.
+`sound-bank.json` records `{id, title, category, file, src}` per sound. `--match`
+prints `{"context": "...", "matches": [{"id", "title", "category", "path", "score"}]}`
+on stdout and exits 0. That `path` is bank-relative (`memes/vine-boom.mp3`),
+while the staged audio lives at `public/remosound/memes/vine-boom.mp3` — so
+prefix the returned `path` with `remosound/` before passing it to
+`staticFile(...)`, or use the registry `src`, which is already prefixed.
 
 ## Etiquette and limits
 
 RemoSound is deliberately gentle with MyInstants: at most **5 concurrent
 downloads**, at least **0.5 s between page fetches**, at most **5000 sounds per
 run**, and exponential backoff (0.5 s, 1 s, 2 s) on HTTP 429 before it gives up
-on that request. `--max-concurrency` can lower the concurrency limit but never
+after 3 retries. `--max-concurrency` can lower the concurrency limit but never
 raise it, and `--limit` cannot request more than 5000 in one run.
 
 ## Disclaimer

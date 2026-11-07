@@ -108,9 +108,9 @@ Lower layers never import `cli`; nothing but `run.py` touches `sys.argv`.
 
 ## Runtime data vs. source
 
-`downloads/` and `sound-bank.json` are **runtime data, not source**. They are
-git-ignored, may be deleted at any time, and must never be committed or edited
-by hand. Change the code that generates them instead.
+`downloads/`, `sound-bank.json`, and `sound-bank.ts` are **runtime data, not
+source**. They are git-ignored, may be deleted at any time, and must never be
+committed or edited by hand. Change the code that generates them instead.
 
 ## License and content rights
 

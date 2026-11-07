@@ -154,19 +154,19 @@ After `--remotion-public <project>/public`, the public tree holds:
    cmd /c ".venv\Scripts\python.exe run.py --trending --remotion-public .\my-video\public"
    ```
 
-4. Play a sound. `getSound` returns `SoundEntry | undefined`, so guard or
-   assert it:
+4. Play a sound. `getSound` returns `SoundEntry | undefined` and ids are
+   MyInstants detail slugs (for example `vine-boom-101`), so fall back to a
+   text search instead of asserting:
 
    ```tsx
    import { Audio, staticFile } from "remotion";
    import { getSound, findSounds } from "./lib/sound-bank";
 
-   export const Boom = () => (
-     <Audio src={staticFile(getSound("vine-boom")!.src)} />
-   );
-
-   // search by text instead of id
-   const candidates = findSounds("boom"); // SoundEntry[]
+   export const Boom = () => {
+     const cue = getSound("vine-boom-101") ?? findSounds("vine boom")[0];
+     if (!cue) return null;
+     return <Audio src={staticFile(cue.src)} />;
+   };
    ```
 
 `staticFile` resolves against `public/`, which is why `src` is
