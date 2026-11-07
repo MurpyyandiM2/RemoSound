@@ -19,6 +19,7 @@ Etiquette implemented here:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
 import re
@@ -79,6 +80,17 @@ def derive_tags(title: str) -> list[str]:
         if len(tags) == MAX_TAGS:
             break
     return tags
+
+
+def _id_digest(instant_id: str) -> str:
+    """Eight hex characters of the raw id's SHA-1, to keep filenames unique.
+
+    Sanitization is lossy, so the sanitized id alone cannot distinguish two
+    remote ids. The digest is deterministic and derived from the raw id, so the
+    same sound always maps to the same filename.
+    """
+
+    return hashlib.sha1(instant_id.encode("utf-8")).hexdigest()[:8]
 
 
 class BulkDownloader:
@@ -199,11 +211,16 @@ class BulkDownloader:
         """Return the file the button downloads to, with a Windows-safe name.
 
         The id is remote content, so it is sanitized before it reaches disk;
-        ``button.id`` itself stays the manifest and dedupe key.
+        ``button.id`` itself stays the manifest and dedupe key. Sanitizing is
+        lossy — ``boom:1`` and ``boom1`` collapse to the same text, as do any
+        two ids sharing their first :data:`MAX_ID_LENGTH` characters — so a
+        short hash of the raw id keeps the name unique per sound. The hash is
+        deterministic, so a resumed run derives the same path and adopts the
+        file it already wrote.
         """
 
         safe_id = sanitize_filename(button.id, fallback="sound", max_length=MAX_ID_LENGTH)
-        suffix = f"-{safe_id}.mp3"
+        suffix = f"-{safe_id}-{_id_digest(button.id)}.mp3"
         # one character of headroom keeps the whole name strictly under the cap
         budget = max(MAX_FILENAME_LENGTH - len(suffix) - 1, 1)
         stem = sanitize_filename(button.title, fallback=safe_id, max_length=budget)

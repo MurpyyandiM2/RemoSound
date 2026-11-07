@@ -5,6 +5,7 @@ every file lands in a pytest ``tmp_path``.
 """
 
 import asyncio
+import hashlib
 import json
 
 import httpx
@@ -17,6 +18,12 @@ from remosound.storage import StorageManager, sanitize_filename
 AUDIO = b"ID3fake"
 
 BASE_URL = "https://www.myinstants.com"
+
+
+def digest(instant_id: str) -> str:
+    """The short raw-id hash the downloader appends to a filename stem."""
+
+    return hashlib.sha1(instant_id.encode("utf-8")).hexdigest()[:8]
 
 
 def make_button(
@@ -61,7 +68,7 @@ async def test_download_one_writes_audio_into_the_category_folder(tmp_path):
 
     assert path is not None
     assert path.parent == storage.category_dir("memes")
-    assert path.name == "Boom-boom-1.mp3"
+    assert path.name == f"Boom-boom-1-{digest('boom-1')}.mp3"
     assert path.read_bytes() == AUDIO
     assert not path.with_suffix(".mp3.part").exists()
 
@@ -100,7 +107,10 @@ async def test_download_one_skips_a_manifest_entry_without_an_http_request(tmp_p
 async def test_download_one_adopts_an_existing_file_without_a_manifest_entry(tmp_path):
     calls: list = []
     downloader, storage, client = make_downloader(tmp_path, audio_handler(calls))
-    target = storage.category_dir("memes") / f"{sanitize_filename('Boom', fallback='boom-1')}-boom-1.mp3"
+    target = (
+        storage.category_dir("memes")
+        / f"{sanitize_filename('Boom', fallback='boom-1')}-boom-1-{digest('boom-1')}.mp3"
+    )
     target.write_bytes(AUDIO)
 
     async with client:
@@ -207,7 +217,7 @@ async def test_download_one_sanitizes_forbidden_characters_in_the_title(tmp_path
         path = await downloader.download_one(make_button(title='Boom: "Big"? <Now>'))
 
     assert path is not None
-    assert path.name == "Boom Big Now-boom-1.mp3"
+    assert path.name == f"Boom Big Now-boom-1-{digest('boom-1')}.mp3"
 
 
 async def test_download_one_keeps_the_filename_under_150_characters(tmp_path):
@@ -218,7 +228,7 @@ async def test_download_one_keeps_the_filename_under_150_characters(tmp_path):
 
     assert path is not None
     assert len(path.name) < 150
-    assert path.name.endswith("-boom-1.mp3")
+    assert path.name.endswith(f"-boom-1-{digest('boom-1')}.mp3")
 
 
 def assert_contained(path, storage) -> None:
@@ -266,9 +276,41 @@ async def test_download_one_sanitizes_a_colon_in_the_id_without_residue(tmp_path
 
     assert path is not None
     assert ":" not in path.name
-    assert path.name == "Boom-boom1.mp3"
+    assert path.name == f"Boom-boom1-{digest('boom:1')}.mp3"
     assert_contained(path, storage)
     assert list(path.parent.glob("*.part")) == []
+
+
+async def test_ids_that_sanitize_alike_get_two_distinct_files(tmp_path):
+    """``boom:1`` and ``boom1`` must not adopt one another's bytes."""
+
+    bodies = {
+        f"{BASE_URL}/media/sounds/one.mp3": b"ID3-colon",
+        f"{BASE_URL}/media/sounds/two.mp3": b"ID3-plain",
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=bodies[str(request.url)])
+
+    downloader, storage, client = make_downloader(tmp_path, handler)
+    buttons = [
+        make_button(instant_id="boom:1", title="Boom", audio_url=f"{BASE_URL}/media/sounds/one.mp3"),
+        make_button(instant_id="boom1", title="Boom", audio_url=f"{BASE_URL}/media/sounds/two.mp3"),
+    ]
+
+    async with client:
+        paths = await downloader.download_batch(buttons)
+
+    assert len(paths) == 2
+    assert len(set(paths)) == 2
+    assert sorted(path.read_bytes() for path in paths) == [b"ID3-colon", b"ID3-plain"]
+    assert paths[0].name != paths[1].name
+
+    first = storage.manifest["boom:1"]
+    second = storage.manifest["boom1"]
+    assert first["path"] != second["path"]
+    assert first["path"] == paths[0].relative_to(tmp_path).as_posix()
+    assert second["path"] == paths[1].relative_to(tmp_path).as_posix()
 
 
 async def test_download_one_keeps_a_300_character_id_under_150_characters(tmp_path):
