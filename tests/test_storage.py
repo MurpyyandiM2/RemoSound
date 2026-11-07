@@ -6,6 +6,20 @@ from remosound.storage import StorageManager, sanitize_filename
 
 FORBIDDEN_CHARS = set('\\/:*?"<>|')
 
+RESERVED_DEVICE_STEMS = {
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    *(f"COM{number}" for number in range(1, 10)),
+    *(f"LPT{number}" for number in range(1, 10)),
+}
+
+
+def _device_stem(name):
+    """The stem Windows would interpret as a DOS device name."""
+    return name.split(".")[0].strip().upper()
+
 
 def test_sanitize_filename_removes_forbidden_characters():
     result = sanitize_filename('What? Are: You | Kidding*/\\"<>')
@@ -44,6 +58,26 @@ def test_sanitize_filename_keeps_emoji_titles_usable():
 
     assert result == "boom 💥 sound"
     assert not (set(result) & FORBIDDEN_CHARS)
+
+
+def test_sanitize_filename_remaps_reserved_device_names():
+    assert _device_stem(sanitize_filename("CON")) not in RESERVED_DEVICE_STEMS
+    assert _device_stem(sanitize_filename("nul")) not in RESERVED_DEVICE_STEMS
+    assert _device_stem(sanitize_filename("com3")) not in RESERVED_DEVICE_STEMS
+    assert _device_stem(sanitize_filename("LPT9.txt")) not in RESERVED_DEVICE_STEMS
+
+
+def test_sanitize_filename_keeps_extension_when_remapping_reserved_stem():
+    assert sanitize_filename("CON") == "CON_"
+    assert sanitize_filename("CON.mp3") == "CON_.mp3"
+    # Win32 ignores a trailing space before the dot, so this is still the device
+    assert sanitize_filename("CON .mp3") == "CON_.mp3"
+
+
+def test_sanitize_filename_leaves_ordinary_titles_alone():
+    assert sanitize_filename("COM1 boom") == "COM1 boom"
+    assert sanitize_filename("Console") == "Console"
+    assert sanitize_filename("Boom") == "Boom"
 
 
 def test_manifest_round_trip(tmp_path):

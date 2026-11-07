@@ -16,14 +16,29 @@ from pathlib import Path
 _FORBIDDEN_CHARS = re.compile(r'[\\/:*?"<>|\x00-\x1f]')
 _WHITESPACE = re.compile(r"\s+")
 
+# Names Windows reserves for DOS devices. A file stem matching one of these is
+# unusable even when an extension follows ("CON.mp3" opens the console device).
+_RESERVED_DEVICE_STEMS = frozenset(
+    {
+        "CON",
+        "PRN",
+        "AUX",
+        "NUL",
+        *(f"COM{number}" for number in range(1, 10)),
+        *(f"LPT{number}" for number in range(1, 10)),
+    }
+)
+
 
 def sanitize_filename(title: str, fallback: str = "sound", max_length: int = 100) -> str:
     """Return a filename stem that is safe to write on Windows.
 
     Forbidden and control characters are removed, whitespace is collapsed,
-    trailing dots and spaces are stripped (Windows silently drops them), and
-    the result is truncated to ``max_length``. When nothing usable remains the
-    sanitized ``fallback`` is used instead.
+    trailing dots and spaces are stripped (Windows silently drops them),
+    reserved DOS device stems get a trailing ``_`` (``"CON"`` -> ``"CON_"``,
+    ``"CON.mp3"`` -> ``"CON_.mp3"``), and the result is truncated to
+    ``max_length``. When nothing usable remains the sanitized ``fallback`` is
+    used instead.
     """
 
     cleaned = _clean(title, max_length)
@@ -35,7 +50,21 @@ def sanitize_filename(title: str, fallback: str = "sound", max_length: int = 100
 def _clean(value: str, max_length: int) -> str:
     cleaned = _FORBIDDEN_CHARS.sub("", value)
     cleaned = _WHITESPACE.sub(" ", cleaned).strip()
-    return cleaned[: max(max_length, 0)].rstrip(" .")
+    cleaned = cleaned[: max(max_length, 0)].rstrip(" .")
+    return _avoid_reserved(cleaned, max_length)
+
+
+def _avoid_reserved(name: str, max_length: int) -> str:
+    stem, dot, extension = name.partition(".")
+    if stem.strip().upper() not in _RESERVED_DEVICE_STEMS:
+        return name
+
+    extension = dot + extension
+    # a trailing space before the dot is ignored by Win32, so trim it too
+    stem = stem.rstrip(" .")
+    # keep the guard inside max_length by trimming the stem, never the guard
+    stem = stem[: max(max_length - len(extension) - 1, 0)]
+    return f"{stem}_{extension}"[:max_length].rstrip(" .") or "_"
 
 
 class StorageManager:
