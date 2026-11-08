@@ -168,14 +168,40 @@ A provider is one sound source. Mixkit is built in and is the default:
 Any other source is a plugin: a single `.py` file in `~/.remosound/providers`
 (or the folder named by `REMOSOUND_PLUGINS`) that defines a `PROVIDER`. Plugins
 are ordinary Python that runs on your machine at startup, so install only files
-you trust. [`contrib/providers/myinstants.py`](contrib/providers/myinstants.py)
-is a working example and the template for your own: subclass `Scraper`, write
-`parse_buttons` and three `crawl_*` methods, and expose `PROVIDER`.
+you trust. Every RemoSound limit (delay between pages, 250 sounds per run, 3000
+per day, public addresses only, 50 MB per file) applies to plugins too.
 
-```bat
-copy contrib\providers\myinstants.py "%USERPROFILE%\.remosound\providers\"
-.venv\Scripts\python.exe run.py --trending --provider myinstants --limit 20
-```
+### Add a source of your own
+
+[`contrib/providers/template.py`](contrib/providers/template.py) is a commented
+template for a site that does not exist yet. To point it at a real site:
+
+1. Copy it into the plugin folder under a new name, for example
+   `mysite.py` (PowerShell):
+
+   ```powershell
+   New-Item -ItemType Directory -Force "$env:USERPROFILE\.remosound\providers"
+   Copy-Item contrib\providers\template.py "$env:USERPROFILE\.remosound\providers\mysite.py"
+   ```
+
+2. Open the copy and change the five numbered spots: the site's listing URLs
+   (1), the category list (2), the CSS selector that matches one sound card (3),
+   where the title and the audio address sit inside a card (4), and the
+   provider `id`, `name` and `badge` (5). To find the selectors, open the site
+   in your browser, right-click one sound, choose **Inspect**, and note the
+   element that wraps a sound and the tag that holds its audio address
+   (`<audio src>`, a `data-` attribute, or a `play('...mp3')` handler).
+
+3. Try it without downloading anything, then for real:
+
+   ```powershell
+   .\.venv\Scripts\python.exe run.py --search "wind" --provider mysite --dry-run
+   .\.venv\Scripts\python.exe run.py --search "wind" --provider mysite --limit 5
+   ```
+
+   If it finds nothing, the selector in step 3 does not match that site's
+   markup; adjust it and run the dry run again. A plugin that fails to load is
+   skipped with a warning and never stops RemoSound.
 
 Pick the source with `--provider <id>` or in the web studio. Every source
 brings its own terms; you decide what to download and what to use it for.

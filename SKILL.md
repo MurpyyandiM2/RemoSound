@@ -30,7 +30,7 @@ Use this skill when a task needs any of the following:
 
 Do not use it to edit or re-encode audio. It downloads only through providers:
 Mixkit, or a plugin in `~/.remosound/providers` (or `$REMOSOUND_PLUGINS`). To
-add a source, write a plugin that exposes `PROVIDER` (see `remosound/providers.py`); do not
+add a source, write a plugin from `contrib/providers/template.py`; do not
 scrape inline. Tell the user that content from a plugin source may be
 copyrighted and that they must check the rights before using it.
 

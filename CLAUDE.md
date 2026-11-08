@@ -95,7 +95,7 @@ remosound/
   web/assets/     brand images served at /assets/ (also used by README)
   scraper.py      Scraper base + Mixkit: pages -> sound records (rate limited)
   providers.py    provider registry: built-in Mixkit + plugins from ~/.remosound/providers
-  ../contrib/providers/  example provider plugins (MyInstants); not installed by default
+  ../contrib/providers/  provider plugin template; not installed by default
   downloader.py   sound records -> files under downloads/ (bounded concurrency)
   storage.py      downloads/manifest.json (dedupe record)
   matcher.py      scene text -> ranked sounds
