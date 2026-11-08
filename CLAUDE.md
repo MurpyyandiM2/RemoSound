@@ -1,7 +1,8 @@
 # Repository Guide: RemoSound
 
-RemoSound is a Python CLI that bulk-downloads sound effects from MyInstants
-and Mixkit (royalty-free) into a local sound bank (`downloads/`) and exposes a
+RemoSound is a Python CLI that bulk-downloads sounds from the sources the user
+chooses (Mixkit built in, others as provider plugins) into a local sound bank
+(`downloads/`) and exposes a
 contextual matcher for Remotion video projects. This file is the operating
 guide for every agent working in this repository — OpenCode, Claude Code,
 Cursor, Antigravity, or a human in a shell.
@@ -11,9 +12,8 @@ the CLI instead of adding scripts.
 
 ## Environment
 
-- **Windows host, spaces in paths.** The checkout lives under
-  `C:\Users\MyBook SAGA 12\InstallSound`. Quote every path in commands and
-  scripts.
+- **Windows host, spaces in paths.** Paths on Windows often contain
+  spaces, so quote every path in commands and scripts.
 - **Always use the virtualenv interpreter.** Dependencies live in `.venv/`
   and are not installed system-wide:
 
@@ -40,7 +40,7 @@ the CLI instead of adding scripts.
 
   Prefer dedicated file tools (`read`, `write`, `edit`, `glob`, `grep`) over
   shell one-liners.
-- **Scratch space.** Use `C:\Users\MyBook SAGA 12\AppData\Local\Temp\opencode`
+- **Scratch space.** Use the OS temp directory (`%TEMP%`)
   for temporary files, never a unix `/tmp`.
 
 ## Canonical commands
@@ -72,9 +72,10 @@ exclusive.
 | `--trending` | Collect trending sounds |
 | `--category NAME` | Collect sounds from one category |
 | `--search QUERY` | Collect sounds matching search query |
-| `--provider P` | Audio provider: `myinstants` (default) or `mixkit` (royalty-free) |
+| `--provider P` | Sound source: `mixkit` (default, built in) or any plugin id |
 | `--delete ID` | Delete a sound from bank and manifest by ID |
 | `--limit N` | Sounds to collect; default 100, capped at 5000 per run |
+| `--project DIR` | Remotion project: bank lives in `DIR/public/remosound`, no copying |
 | `--out DIR` | Bank root, default `downloads` |
 | `--dry-run` | Print the plan; write nothing |
 | `--max-concurrency N` | Parallel downloads, default 5; may only lower the cap |
@@ -92,8 +93,11 @@ run.py            entrypoint, argument parsing, wiring
 remosound/
   cli.py          menus, flags, rich output
   web.py          local HTTP studio: jobs, JSON API, Range audio streaming
-  web/index.html  the entire single-page studio (CSS + JS inline)
-  scraper.py      MyInstants pages -> sound records (rate limited)
+  web/index.html  studio markup; web/static/studio.css and studio.js hold its styles and script
+  web/assets/     brand images served at /assets/ (also used by README)
+  scraper.py      Scraper base + Mixkit: pages -> sound records (rate limited)
+  providers.py    provider registry: built-in Mixkit + plugins from ~/.remosound/providers
+  ../contrib/providers/  example provider plugins (MyInstants); not installed by default
   downloader.py   sound records -> files under downloads/ (bounded concurrency)
   storage.py      downloads/manifest.json (dedupe record)
   matcher.py      scene text -> ranked sounds
@@ -140,7 +144,8 @@ committed or edited by hand. Change the code that generates them instead.
 
 ## License and content rights
 
-Code is MIT (see `LICENSE`). Audio is community-uploaded MyInstants content
-or free royalty-free Mixkit content: RemoSound only automates retrieval, and
-users are responsible for verifying rights before commercial use. Keep that
+Code is MIT (see `LICENSE`). RemoSound ships no audio and only automates
+retrieval: Mixkit content is royalty-free under its own licence, content from
+plugin sources (`contrib/providers/`) may be copyrighted, and users are
+responsible for verifying rights before commercial use. Keep that
 disclaimer in `README.md`.

@@ -14,7 +14,8 @@ import pytest
 
 from remosound import cli as cli_module
 from remosound.cli import build_parser, main, main_async
-from remosound.scraper import InstantButton, MixkitScraper, MyInstantsScraper
+from remosound.providers import providers
+from remosound.scraper import InstantButton, MixkitScraper
 from remosound.storage import StorageManager
 
 BASE_URL = "https://www.myinstants.com"
@@ -36,7 +37,7 @@ def patch_crawl(monkeypatch, method_name, buttons):
     async def crawl(self, *args, **kwargs):
         return list(buttons)
 
-    monkeypatch.setattr(MyInstantsScraper, method_name, crawl)
+    monkeypatch.setattr(MixkitScraper, method_name, crawl)
 
 
 def seed_bank(tmp_path, records):
@@ -480,7 +481,7 @@ async def test_search_flag_crawls_the_query(tmp_path, monkeypatch, capsys):
         seen["limit"] = limit
         return []
 
-    monkeypatch.setattr(MyInstantsScraper, "crawl_search", crawl)
+    monkeypatch.setattr(MixkitScraper, "crawl_search", crawl)
 
     code = await main_async(["--search", "boom", "--limit", "3", "--out", str(tmp_path / "downloads")])
 
@@ -496,7 +497,7 @@ async def test_a_scrape_failure_exits_one_without_writing(tmp_path, monkeypatch,
     async def offline(self, *args, **kwargs):
         raise httpx.ConnectError("offline")
 
-    monkeypatch.setattr(MyInstantsScraper, "crawl_trending", offline)
+    monkeypatch.setattr(MixkitScraper, "crawl_trending", offline)
     bank = tmp_path / "downloads"
 
     code = await main_async(["--trending", "--out", str(bank)])
@@ -537,7 +538,7 @@ async def test_dry_run_survives_interactive_menu_dispatch(tmp_path, monkeypatch,
         seen["limit"] = limit
         return [make_button()]
 
-    monkeypatch.setattr(MyInstantsScraper, "crawl_trending", crawl)
+    monkeypatch.setattr(MixkitScraper, "crawl_trending", crawl)
     # Answer the menu without touching stdin: choice "1" is Trending.
     monkeypatch.setattr(cli_module.Prompt, "ask", lambda *args, **kwargs: "1")
 
@@ -602,17 +603,17 @@ async def test_a_port_that_never_opens_exits_one_with_a_message(tmp_path, monkey
 # --- category menu ---------------------------------------------------------
 
 
-def test_category_numbers_map_to_the_real_myinstants_slugs(monkeypatch):
+def test_category_numbers_map_to_the_provider_slugs(monkeypatch):
     monkeypatch.setattr(cli_module.Prompt, "ask", lambda *args, **kwargs: "2")
 
     slug = cli_module._ask_category(cli_module.Console())
 
-    assert slug == cli_module.CATEGORIES[1][1]
+    assert slug == providers()["mixkit"].categories[1][1]
 
 
 def test_provider_flag_options():
     parser = build_parser()
-    assert parser.parse_args(["--trending"]).provider == "myinstants"
+    assert parser.parse_args(["--trending"]).provider == "mixkit"
     assert parser.parse_args(["--trending", "--provider", "mixkit"]).provider == "mixkit"
     with pytest.raises(SystemExit):
         parser.parse_args(["--trending", "--provider", "unknown"])
@@ -667,11 +668,11 @@ def test_the_category_table_shows_each_real_category(capsys, monkeypatch):
     cli_module._ask_category(cli_module.Console())
 
     output = capsys.readouterr().out
-    assert len(cli_module.CATEGORIES) == 14
-    for label, _slug in cli_module.CATEGORIES:
+    categories = providers()["mixkit"].categories
+    assert len(categories) == 14
+    for label, _slug in categories:
         assert label in output
-    slugs = {slug for _label, slug in cli_module.CATEGORIES}
-    assert {"sound effects", "anime & manga", "whatsapp audios"} <= slugs
+    assert {"transition", "whoosh", "cinematic"} <= {slug for _label, slug in categories}
 
 
 # --- summary ---------------------------------------------------------------
@@ -707,3 +708,50 @@ async def test_a_custom_bank_root_is_carried_into_the_next_commands(tmp_path, mo
     output = capsys.readouterr().out
     assert f'--out "{bank}"' in output
 
+
+
+# --- --project: the bank lives inside the Remotion project ------------------
+
+
+def remotion_project(tmp_path):
+    project = tmp_path / "my-video"
+    project.mkdir()
+    (project / "package.json").write_text("{}", encoding="utf-8")
+    return project
+
+
+async def test_project_flag_downloads_straight_into_the_remotion_public_folder(tmp_path, monkeypatch):
+    project = remotion_project(tmp_path)
+    patch_crawl(monkeypatch, "crawl_search", [make_button("wind-1", "Strong Wind", "search")])
+    monkeypatch.setattr(cli_module, "BulkDownloader", FakeDownloader)
+
+    code = await main_async(["--search", "wind", "--project", str(project), "--limit", "1"])
+
+    assert code == 0
+    bank = project / "public" / "remosound"
+    assert StorageManager(bank).is_downloaded("wind-1")
+    # The registry sits beside the bank, in public/, where staticFile() and the helper expect it.
+    registry = json.loads((project / "public" / "sound-bank.json").read_text(encoding="utf-8"))
+    assert registry["sounds"][0]["src"].startswith("remosound/")
+    assert not (tmp_path / "downloads").exists()
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [["--out", "elsewhere"], ["--remotion-public", "somewhere"]],
+)
+async def test_project_flag_refuses_a_second_destination(tmp_path, extra):
+    project = remotion_project(tmp_path)
+
+    with pytest.raises(SystemExit) as raised:
+        await main_async(["--trending", "--project", str(project), *extra])
+
+    assert raised.value.code == 2
+
+
+async def test_project_flag_needs_a_real_remotion_project(tmp_path):
+    with pytest.raises(SystemExit) as raised:
+        await main_async(["--trending", "--project", str(tmp_path / "typo")])
+
+    assert raised.value.code == 2
+    assert not (tmp_path / "typo").exists()

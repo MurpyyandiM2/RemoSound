@@ -12,6 +12,7 @@ import urllib.request
 import pytest
 
 from remosound import web as web_module
+from remosound.remotion_adapter import write_index
 from remosound.storage import StorageManager
 from remosound.web import (
     RemoSoundServer,
@@ -64,7 +65,7 @@ def test_bank_payload_sorts_sounds_and_counts_categories(tmp_path):
         {"name": "memes", "count": 2},
         {"name": "sound effects", "count": 1},
     ]
-    assert payload["available"][0]["slug"] == "sound effects"
+    assert payload["available"][0]["slug"] == "transition"
 
 
 def test_bank_payload_gives_every_sound_a_play_url_and_remotion_src(tmp_path):
@@ -217,7 +218,7 @@ def test_index_is_served_as_html(studio):
     assert status == 200
     assert headers["Content-Type"].startswith("text/html")
     assert b"RemoSound" in body
-    assert b"/assets/icon.png" in body
+    assert b"/assets/app-icon.png" in body
     assert b"/assets/logo.png" in body
 
 
@@ -333,8 +334,7 @@ def test_bank_payload_includes_provider_and_providers_list(tmp_path):
     assert sounds_by_id["mixkit-1"]["provider"] == "mixkit"
     assert "providers" in payload
     provider_ids = [p["id"] for p in payload["providers"]]
-    assert "myinstants" in provider_ids
-    assert "mixkit" in provider_ids
+    assert provider_ids == ["mixkit"]
 
 
 def test_delete_endpoint_removes_sound(studio):
@@ -382,26 +382,58 @@ def test_download_endpoint_accepts_provider_mixkit(studio):
     assert "job" in payload
 
 
-def test_asset_serving_returns_logo(studio):
+def test_asset_serving_returns_the_brand_images(studio):
     base, _bank = studio
-    status, headers, body = get(base + "/assets/Logo%20utama.png")
+
+    for name in ("logo.png", "app-icon.png", "logo-banner.png"):
+        status, headers, body = get(base + "/assets/" + name)
+        assert status == 200
+        assert headers["Content-Type"] == "image/png"
+        assert body
+
+
+
+
+# --- static files and project mode ------------------------------------------
+
+
+def test_studio_css_and_js_are_served_with_their_own_types(studio):
+    base, _bank = studio
+
+    for name, kind in (("studio.css", "text/css"), ("studio.js", "text/javascript")):
+        status, headers, body = get(base + "/static/" + name)
+        assert status == 200
+        assert headers["Content-Type"].startswith(kind)
+        assert body
+
+    _status, _headers, page = get(base + "/")
+    assert b"/static/studio.css" in page
+    assert b"/static/studio.js" in page
+
+
+def test_the_static_route_cannot_leave_its_folder(studio):
+    base, _bank = studio
+
+    with pytest.raises(urllib.error.HTTPError) as refused:
+        get(base + "/static/..%2Findex.html")
+
+    assert refused.value.code == 403
+
+
+def test_a_project_studio_keeps_the_index_in_step_with_deletes(tmp_path):
+    bank = seed_bank(tmp_path, [("boom-1", "Vine Boom", "memes"), ("pop-1", "Pop Whoosh", "memes")])
+    write_index(StorageManager(bank), bank)
+    registry = bank.parent / "sound-bank.json"
+    server = RemoSoundServer((web_module.HOST, 0), bank, refresh_index=True)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        status, _payload = post(f"http://{web_module.HOST}:{server.server_address[1]}/api/delete", {"id": "boom-1"})
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
     assert status == 200
-    assert headers["Content-Type"] == "image/png"
-    assert len(body) > 0
-
-    status2, headers2, body2 = get(base + "/assets/logo.png")
-    assert status2 == 200
-    assert headers2["Content-Type"] == "image/png"
-    assert len(body2) > 0
-
-    status3, headers3, body3 = get(base + "/assets/icon.png")
-    assert status3 == 200
-    assert headers3["Content-Type"] == "image/png"
-    assert len(body3) > 0
-
-    status4, headers4, body4 = get(base + "/assets/Ikon%20aplikasi.png")
-    assert status4 == 200
-    assert headers4["Content-Type"] == "image/png"
-    assert len(body4) > 0
-
-
+    ids = [sound["id"] for sound in json.loads(registry.read_text(encoding="utf-8"))["sounds"]]
+    assert ids == ["pop-1"]

@@ -1,16 +1,24 @@
-"""Tests for the polite MyInstants scraper.
+"""Tests for the polite scraper core, Mixkit and the MyInstants example plugin.
 
 Every test is offline: pages come from ``tests/fixtures`` and HTTP goes through
 :class:`httpx.MockTransport`, never the live site.
 """
 
 import asyncio
+import importlib.util
 from pathlib import Path
 
 import httpx
 import pytest
 
-from remosound.scraper import BASE_URL, MixkitScraper, MyInstantsScraper
+from remosound.scraper import MixkitScraper
+
+_PLUGIN = Path(__file__).parent.parent / "contrib" / "providers" / "myinstants.py"
+_spec = importlib.util.spec_from_file_location("contrib_myinstants", _PLUGIN)
+_contrib = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_contrib)
+BASE_URL = _contrib.BASE_URL
+MyInstantsScraper = _contrib.MyInstantsScraper
 
 FIXTURE = Path(__file__).parent / "fixtures" / "myinstants_page.html"
 MIXKIT_FIXTURE = Path(__file__).parent / "fixtures" / "mixkit_page.html"

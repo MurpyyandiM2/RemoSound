@@ -17,7 +17,7 @@ import shutil
 import tempfile
 from pathlib import Path, PurePosixPath
 
-from remosound.storage import category_slug
+from remosound.storage import StorageManager, category_slug
 
 REGISTRY_VERSION = 1
 REGISTRY_NAME = "sound-bank.json"
@@ -248,3 +248,46 @@ export function findSounds(query: string): SoundEntry[] {
   );
 }
 """
+
+
+def registry_paths(out: Path) -> tuple[Path, Path]:
+    """Registry and helper paths beside the bank root (``public/`` in a project)."""
+
+    parent = Path(out).parent
+    return parent / REGISTRY_NAME, parent / HELPER_NAME
+
+
+def write_index(storage: "StorageManager", out: Path) -> None:
+    """Write ``sound-bank.json`` and then ``sound-bank.ts`` beside the bank root ``out``."""
+
+    registry, helper = registry_paths(out)
+    _refuse_to_empty_the_registry(storage, registry)
+    export_registry(storage.entries(), registry)
+    export_typescript_helper(registry, helper)
+
+
+def _refuse_to_empty_the_registry(storage: "StorageManager", registry: Path) -> None:
+    """Raise when an empty manifest would replace a registry full of sounds.
+
+    An empty bank is usually a lost or corrupt manifest, not an intentional
+    reset. Overwriting ``sound-bank.json`` (and then copying it into a
+    Remotion ``public/``) would destroy the only remaining index of audio the
+    user still has on disk, so the CLI stops and points at the quarantine file.
+    """
+
+    if storage.entries() or not registry.exists():
+        return
+    try:
+        existing = json.loads(registry.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        # An unreadable registry holds nothing worth preserving.
+        return
+    sounds = existing.get("sounds") if isinstance(existing, dict) else None
+    if not isinstance(sounds, list) or not sounds:
+        return
+
+    raise ValueError(
+        f"{registry} already lists {len(sounds)} sound(s) but the manifest is empty; "
+        f"refusing to overwrite it. Check {storage.corrupt_manifest_path} "
+        "and restore the bank before rebuilding."
+    )

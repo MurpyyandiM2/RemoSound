@@ -1,15 +1,20 @@
 # RemoSound
 
 <p align="center">
-  <img src="assets/Logo utama.png" alt="RemoSound Logo" width="380">
+  <img src="remosound/web/assets/logo-banner.png" alt="RemoSound" width="520">
 </p>
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-RemoSound is a Python CLI + portable Agent Skill that bulk-downloads sound effects from
-[MyInstants](https://www.myinstants.com/) (Community) and [Mixkit](https://mixkit.co/) (Royalty-Free) into a local **sound bank** and then
-matches those sounds to a described scene, so a Remotion project can pull the
-right cue with `staticFile(...)` instead of hunting for one by hand.
+RemoSound is a bulk sound downloader, a Python CLI and a portable Agent Skill.
+It fills a local **sound bank** from the sources you choose, then matches those
+sounds to a described scene, so a Remotion project can pull the right cue with
+`staticFile(...)` instead of hunting for one by hand. Install it as a skill and
+your agent can find and download audio while it builds a video.
+
+RemoSound is a tool, not a library of sounds: it ships no audio. [Mixkit](https://mixkit.co/)
+(royalty-free) is built in, and any other source is a small plugin you add
+yourself (see [Providers](#providers)).
 
 It runs entirely on your machine, keeps a manifest of everything it has already
 fetched, and never re-downloads a sound it already owns.
@@ -56,11 +61,12 @@ entrypoint — there are no separate scripts to remember.
 | `--trending --limit N` | Grab what's trending right now |
 | `--category <name> --limit N` | Grab one category |
 | `--search "<query>" --limit N` | Grab search results |
-| `--provider <myinstants\|mixkit>` | Select audio provider (default: `myinstants`; optional: `mixkit` for royalty-free) |
+| `--provider <id>` | Select the source (default `mixkit`; plugins add more ids) |
 | `--delete <id>` | Delete one sound from the bank and manifest by ID |
 | `--match "<scene text>"` | Rank the bank against a scene description, print JSON (top 5) |
 | `--rebuild-index` | Rebuild `sound-bank.json` and `sound-bank.ts` from the manifest |
 | `--dry-run` | Print what a run would download; write nothing |
+| `--project DIR` | Remotion project folder: the bank lives in `DIR/public/remosound`, no copying needed |
 | `--out DIR` | Bank root (default `downloads`) |
 | `--remotion-public DIR` | Stage the bank into a Remotion `public/` after a successful run |
 | `--max-concurrency N` | Parallel downloads (default 5; values above 5 are capped at 5) |
@@ -90,8 +96,8 @@ Tests:
 It is Python's standard library only — no Node, no npm, no build step, no extra
 dependency.
 
-- **Soundboard** — every sound in the bank with search, category filters, provider badges (`Community` vs `Royalty-Free`), delete with confirmation, and a persistent player. Audio streams with HTTP Range support.
-- **Downloader** — pick provider (MyInstants or Mixkit), choose between category browsing or online search query, set amount, and watch live download progress.
+- **Soundboard** — every sound in the bank with search, category filters, a licence badge per source, delete with confirmation, and a persistent player. Audio streams with HTTP Range support.
+- **Downloader** — pick a source, choose between category browsing or online search query, set amount, and watch live download progress.
 - **Remotion studio** — describe a scene in Indonesian or English, get the top 8 ranked cues in side-by-side view, preview each one, copy ready `<Audio src={staticFile(...)} />` JSX, or delete unwanted cues.
 
 The server binds `127.0.0.1` only and stops on Ctrl+C. `--out` selects the bank
@@ -101,15 +107,27 @@ it reads and writes, exactly like the CLI:
 .venv\Scripts\python.exe run.py --web --out .\downloads
 ```
 
-## Categories & Providers
+## Providers
 
-RemoSound supports two providers:
-1. **MyInstants** (default, community-uploaded):
-   `anime & manga`, `games`, `memes`, `movies`, `music`, `politics`, `pranks`, `reactions`, `sound effects`, `sports`, `television`, `tiktok trends`, `viral`, `whatsapp audios`.
-2. **Mixkit** (royalty-free sound effects):
-   `transition`, `nature`, `technology`, `funny`, `notification`, `animals`, `transport`, `game`, `whoosh`, `impact`, `cinematic`, `ambience`, `alarm`, `cartoon`.
+A provider is one sound source. Mixkit is built in and is the default:
+`transition`, `nature`, `technology`, `funny`, `notification`, `animals`,
+`transport`, `game`, `whoosh`, `impact`, `cinematic`, `ambience`, `alarm`,
+`cartoon`.
 
-Specify provider using `--provider mixkit` or switch in the web studio tabs.
+Any other source is a plugin: a single `.py` file in `~/.remosound/providers`
+(or the folder named by `REMOSOUND_PLUGINS`) that defines a `PROVIDER`. Plugins
+are ordinary Python that runs on your machine at startup, so install only files
+you trust. [`contrib/providers/myinstants.py`](contrib/providers/myinstants.py)
+is a working example and the template for your own: subclass `Scraper`, write
+`parse_buttons` and three `crawl_*` methods, and expose `PROVIDER`.
+
+```bat
+copy contrib\providers\myinstants.py "%USERPROFILE%\.remosound\providers\"
+.venv\Scripts\python.exe run.py --trending --provider myinstants --limit 20
+```
+
+Pick the source with `--provider <id>` or in the web studio. Every source
+brings its own terms; you decide what to download and what to use it for.
 
 ## Supported harnesses
 
@@ -142,6 +160,23 @@ sound-bank.ts                 # dependency-free lookup helper for Remotion
 git-ignored and can be deleted at any time; both registry files are regenerated
 with `--rebuild-index`.
 
+## Download straight into your Remotion project
+
+Point RemoSound at your Remotion project and the bank lives inside it. There is
+one copy of every sound, and it is ready for `staticFile()` the moment it
+downloads:
+
+```bat
+.venv\Scripts\python.exe run.py --search "wind" --project C:ideos\my-video
+.venv\Scripts\python.exe run.py --web --project C:ideos\my-video
+```
+
+Sounds land in `my-video/public/remosound/<category>/`, and `sound-bank.json` and
+`sound-bank.ts` are refreshed in `my-video/public/`. The folder must be a
+Remotion project (it needs a `package.json`). `--project` replaces `--out` and
+`--remotion-public`, so use it on its own. Without `--project` the bank stays in
+`downloads/` and you stage it with `--remotion-public`, as below.
+
 ## Using the bank from Remotion
 
 `--remotion-public` does both halves of the integration in one run: it copies
@@ -169,9 +204,9 @@ import { Audio, staticFile, Sequence } from "remotion";
 import { findSounds, getSound } from "./lib/sound-bank";
 
 export const ExplosionScene = () => {
-  // ids are MyInstants detail slugs (for example "vine-boom-101") and
+  // ids are source ids (for example "mixkit-123") and
   // getSound returns undefined for unknown ids, so fall back to a text search.
-  const cue = getSound("vine-boom-101") ?? findSounds("vine boom")[0];
+  const cue = getSound("mixkit-123") ?? findSounds("whoosh")[0];
   if (!cue) return null;
   return (
     <Sequence from={0} durationInFrames={90}>
@@ -201,7 +236,13 @@ raise it, and `--limit` cannot request more than 5000 in one run.
 
 ## Disclaimer
 
-Audio files retrieved from MyInstants are community-uploaded content. Sounds retrieved from Mixkit are free royalty-free sound effects provided under Mixkit's Free License. RemoSound only automates retrieval. You are responsible for verifying rights and licenses before commercial use.
+RemoSound only automates retrieval from the sources you choose, and ships no
+audio. The built-in source, Mixkit, publishes its sounds under the Mixkit
+licence. Content from any plugin source may be protected by copyright and by
+that site's terms of use. You are responsible for checking the rights and terms
+for every sound before using it, especially commercially. RemoSound is an
+independent project and is not affiliated with Mixkit, Remotion or any site you
+download from.
 
 ## License
 

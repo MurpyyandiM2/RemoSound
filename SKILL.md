@@ -1,15 +1,16 @@
 ---
 name: remosound
-description: Bulk-download MyInstants and Mixkit sounds into a local sound bank and match sounds to video scene text for Remotion.
+description: Bulk-download sound effects and music from any source into a local sound bank (Mixkit built in, other sources as plugins) and match sounds to video scene text for Remotion.
 ---
 
 # RemoSound
 
-RemoSound is a Python CLI that fills a local **sound bank** from
-[MyInstants](https://www.myinstants.com/) and [Mixkit](https://mixkit.co/) (royalty-free),
-ranks that bank against a scene description, and emits `staticFile()`-ready paths for a Remotion project. It
-runs entirely on the machine, records every download in a manifest, and never
-fetches the same sound twice.
+RemoSound is a Python CLI and agent skill that fills a local **sound bank** from
+the sources the user chooses, ranks that bank against a scene description, and
+emits `staticFile()`-ready paths for a Remotion project. [Mixkit](https://mixkit.co/)
+(royalty-free) is the built-in source; any other source is a provider plugin.
+It runs entirely on the machine, records every download in a manifest, and never
+fetches the same sound twice. It ships no audio.
 
 `run.py` is the only entrypoint. Never re-implement scraping inline; call
 `run.py`. Extend `remosound/` if behaviour is missing.
@@ -27,8 +28,11 @@ Use this skill when a task needs any of the following:
 - rebuild `sound-bank.json` / `sound-bank.ts` after the bank changed;
 - stage the bank into a Remotion project's `public/` directory.
 
-Do not use it to edit or re-encode audio, or to fetch anything from a host
-other than MyInstants.
+Do not use it to edit or re-encode audio. It downloads only through providers:
+Mixkit, or a plugin in `~/.remosound/providers` (or `$REMOSOUND_PLUGINS`). To
+add a source, write a plugin from `contrib/providers/myinstants.py`; do not
+scrape inline. Tell the user that content from a plugin source may be
+copyrighted and that they must check the rights before using it.
 
 ## Environment
 
@@ -58,11 +62,12 @@ Search / Match / Rebuild index / Web studio). Modes are mutually exclusive.
 | `run.py --trending [--limit N]` | Download the trending listing |
 | `run.py --category <name> [--limit N]` | Download one category |
 | `run.py --search "<query>" [--limit N]` | Download search results |
-| `run.py [mode] --provider <myinstants\|mixkit>` | Select audio provider (default: `myinstants`; optional: `mixkit` for royalty-free) |
+| `run.py [mode] --provider <id>` | Select the source (default `mixkit`; plugins add more ids) |
 | `run.py --delete <id>` | Delete a sound from bank and manifest by ID |
 | `run.py --match "<scene text>"` | Rank the bank and print JSON (top 5) |
 | `run.py --rebuild-index` | Write `sound-bank.json` and `sound-bank.ts` |
 | `run.py [mode] --dry-run` | Print the plan; write nothing |
+| `run.py [mode] --project <remotion-project>` | Keep the bank in `<project>/public/remosound`; downloads are usable with no copying. Prefer this whenever you know the Remotion project folder |
 | `run.py [mode] --out DIR` | Bank root (default `downloads`) |
 | `run.py [mode] --remotion-public <project>/public` | Stage the bank into Remotion after a successful run |
 | `run.py [mode] --max-concurrency N` | Parallel downloads (default 5; values above 5 are capped at 5) |
@@ -159,7 +164,7 @@ After `--remotion-public <project>/public`, the public tree holds:
    ```
 
 4. Play a sound. `getSound` returns `SoundEntry | undefined` and ids are
-   MyInstants detail slugs (for example `vine-boom-101`), so fall back to a
+   source ids (for example `mixkit-123`), so fall back to a
    text search instead of asserting:
 
    ```tsx
@@ -167,7 +172,7 @@ After `--remotion-public <project>/public`, the public tree holds:
    import { getSound, findSounds } from "./lib/sound-bank";
 
    export const Boom = () => {
-     const cue = getSound("vine-boom-101") ?? findSounds("vine boom")[0];
+     const cue = getSound("mixkit-123") ?? findSounds("whoosh")[0];
      if (!cue) return null;
      return <Audio src={staticFile(cue.src)} />;
    };
@@ -180,6 +185,7 @@ layout above.
 
 ## License and content rights
 
-Code is MIT (see `LICENSE`). Audio is community-uploaded MyInstants content
-or free royalty-free Mixkit content: RemoSound only automates retrieval, and
-users are responsible for verifying rights before commercial use.
+Code is MIT (see `LICENSE`). RemoSound only automates retrieval and ships no
+audio. Mixkit content is royalty-free under its own licence; content from plugin
+sources may be copyrighted. Users are responsible for verifying rights before
+commercial use.

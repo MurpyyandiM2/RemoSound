@@ -47,11 +47,13 @@ from remosound.matcher import ContextualSoundMatcher
 from remosound.remotion_adapter import (
     HELPER_NAME,
     REGISTRY_NAME,
-    export_registry,
-    export_typescript_helper,
+    REMOTION_PREFIX,
+    registry_paths,
     stage_into_remotion,
+    write_index,
 )
-from remosound.scraper import CATEGORIES, InstantButton, MixkitScraper, MyInstantsScraper
+from remosound.providers import DEFAULT_PROVIDER, providers
+from remosound.scraper import InstantButton, Scraper
 from remosound.storage import StorageManager
 from remosound.web import serve as serve_web
 
@@ -70,7 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser = argparse.ArgumentParser(
         prog="run.py",
-        description="Download MyInstants sounds into a local bank and match them to Remotion scenes.",
+        description="Bulk-download sounds into a local bank and match them to Remotion scenes.",
         epilog=(
             "Without a mode flag an interactive menu opens. "
             "Exit codes: 0 success, 1 runtime failure, 2 usage error."
@@ -107,9 +109,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "--provider",
-        choices=["myinstants", "mixkit"],
-        default="myinstants",
-        help="sound provider: myinstants (default) or mixkit (royalty-free)",
+        choices=sorted(providers()),
+        default=DEFAULT_PROVIDER,
+        help=f"sound source (default {DEFAULT_PROVIDER}); more can be added as plugins, see README",
     )
 
     parser.add_argument(
@@ -125,6 +127,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=Path(DEFAULT_OUT),
         metavar="DIR",
         help=f"bank root (default {DEFAULT_OUT})",
+    )
+    parser.add_argument(
+        "--project",
+        type=Path,
+        metavar="DIR",
+        help="Remotion project folder: keep the bank inside its public/ so downloads are usable with no copying",
     )
     parser.add_argument(
         "--remotion-public",
@@ -153,6 +161,14 @@ async def main_async(argv: list[str] | None = None) -> int:
     _configure_stdout()
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.project is not None:
+        if args.out != Path(DEFAULT_OUT):
+            parser.error("--project already chooses the bank folder; drop --out")
+        if args.remotion_public is not None:
+            parser.error("--project already keeps the bank in the project; drop --remotion-public")
+        if not (args.project / "package.json").is_file():
+            parser.error(f"--project: {args.project} is not a Remotion project (no package.json)")
+        args.out = args.project / "public" / REMOTION_PREFIX
     if args.remotion_public is not None and not _writes_bank(args):
         parser.error("--remotion-public needs a batch download or --rebuild-index")
     return await _dispatch(args, Console())
@@ -193,7 +209,7 @@ async def interactive_menu(args: argparse.Namespace, console: Console) -> int:
     if choice == "1":
         mode = {"trending": True}
     elif choice == "2":
-        mode = {"category": _ask_category(console)}
+        mode = {"category": _ask_category(console, args.provider)}
     elif choice == "3":
         mode = {"search": _ask("Query", console)}
     elif choice == "4":
@@ -209,17 +225,18 @@ async def interactive_menu(args: argparse.Namespace, console: Console) -> int:
     return await _dispatch(selected, console)
 
 
-def _ask_category(console: Console) -> str:
-    """Show the real MyInstants categories and return the chosen slug.
+def _ask_category(console: Console, provider: str = DEFAULT_PROVIDER) -> str:
+    """Show the provider's categories and return the chosen slug.
 
     Picking a number is the common path; ``0`` keeps free-text available for a
     slug the site adds after this table was written.
     """
 
-    table = Table(title="MyInstants categories", show_header=False, box=None, pad_edge=False)
+    categories = providers()[provider].categories
+    table = Table(title=f"{providers()[provider].name} categories", show_header=False, box=None, pad_edge=False)
     for _ in range(4):
         table.add_column()
-    entries = [(str(index), label) for index, (label, _slug) in enumerate(CATEGORIES, start=1)]
+    entries = [(str(index), label) for index, (label, _slug) in enumerate(categories, start=1)]
     half = (len(entries) + 1) // 2
     for offset in range(half):
         row: list[str] = []
@@ -233,7 +250,7 @@ def _ask_category(console: Console) -> str:
     choice = Prompt.ask("Category", choices=choices, default="1", console=console)
     if choice == "0":
         return _ask("Category name or slug", console)
-    return CATEGORIES[int(choice) - 1][1]
+    return categories[int(choice) - 1][1]
 
 
 async def _dispatch(args: argparse.Namespace, console: Console) -> int:
@@ -273,7 +290,7 @@ def _run_web(args: argparse.Namespace, console: Console) -> int:
     """Serve the local web studio until the user stops it."""
 
     try:
-        serve_web(args.out, console=console)
+        serve_web(args.out, console=console, refresh_index=args.project is not None)
     except OSError as error:
         _error(f"Could not start the web studio: {error}")
         return 1
@@ -296,7 +313,7 @@ def _run_match(args: argparse.Namespace, console: Console) -> int:
 
     payload = {"context": args.match, "matches": matches}
     # ASCII-only output keeps this stream-safe: on Windows a redirected stdout
-    # defaults to cp1252, and MyInstants titles routinely contain emoji.
+    # defaults to cp1252, and remote titles routinely contain emoji.
     sys.stdout.write(json.dumps(payload, ensure_ascii=True, indent=2) + "\n")
     return 0
 
@@ -308,7 +325,7 @@ async def _run_rebuild(args: argparse.Namespace, console: Console) -> int:
     """Write the registry and TypeScript helper beside the bank root."""
 
     storage = StorageManager(args.out)
-    registry, helper = _registry_paths(args.out)
+    registry, helper = registry_paths(args.out)
     if args.dry_run:
         console.print(f"Dry run: would write {escape(str(registry))} and {escape(str(helper))}.")
         if args.remotion_public is not None:
@@ -316,7 +333,7 @@ async def _run_rebuild(args: argparse.Namespace, console: Console) -> int:
         return 0
 
     try:
-        _write_index(storage, registry, helper)
+        write_index(storage, args.out)
         console.print(f"Wrote {escape(str(registry))} and {escape(str(helper))}.")
         if args.remotion_public is not None:
             staged = stage_into_remotion(registry, args.out, args.remotion_public)
@@ -335,7 +352,7 @@ async def _run_batch(args: argparse.Namespace, console: Console) -> int:
 
     storage = StorageManager(args.out)
 
-    scraper = MixkitScraper() if getattr(args, "provider", "myinstants") == "mixkit" else MyInstantsScraper()
+    scraper = providers()[getattr(args, "provider", DEFAULT_PROVIDER)].scraper()
     try:
         buttons = await _collect(scraper, args)
     except httpx.HTTPError as error:
@@ -373,19 +390,27 @@ async def _run_batch(args: argparse.Namespace, console: Console) -> int:
         if failed:
             console.print("Skipped staging because some downloads failed.")
         else:
-            registry, helper = _registry_paths(args.out)
+            registry, helper = registry_paths(args.out)
             try:
-                _write_index(storage, registry, helper)
+                write_index(storage, args.out)
                 staged = stage_into_remotion(registry, args.out, args.remotion_public)
                 console.print(f"Staged the bank into {escape(str(staged.parent))}.")
             except (OSError, ValueError) as error:
                 _error(f"Could not stage the bank into Remotion: {error}")
                 return 1
 
+    if args.project is not None:
+        # The bank already sits in the project, so only the lookup files need refreshing.
+        try:
+            write_index(storage, args.out)
+        except (OSError, ValueError) as error:
+            _error(f"Could not update the Remotion index: {error}")
+            return 1
+
     return 1 if failed else 0
 
 
-async def _collect(scraper: MyInstantsScraper | MixkitScraper, args: argparse.Namespace) -> list[InstantButton]:
+async def _collect(scraper: Scraper, args: argparse.Namespace) -> list[InstantButton]:
     """Crawl the listing selected by ``args``."""
 
     if args.trending:
@@ -508,7 +533,10 @@ def _print_summary(
             failures.add_row(escape(button.id), escape(button.title or button.id))
         console.print(failures)
 
-    out_flag = f' --out "{args.out}"' if str(args.out) != DEFAULT_OUT else ""
+    if args.project is not None:
+        out_flag = f' --project "{args.project}"'
+    else:
+        out_flag = f' --out "{args.out}"' if str(args.out) != DEFAULT_OUT else ""
     hints = (
         f'[bold]Match a scene[/bold]   python run.py --match "boom"{escape(out_flag)}\n'
         f"[bold]Open the studio[/bold] python run.py --web{escape(out_flag)}\n"
@@ -548,7 +576,7 @@ def _configure_stdout() -> None:
     """Make stdout UTF-8 so redirected output never fails on remote titles.
 
     Windows otherwise hands a redirected stream cp1252, which cannot encode the
-    emoji that appear in real MyInstants titles. Test doubles without a
+    emoji that appear in real remote titles. Test doubles without a
     ``reconfigure`` method are left alone.
     """
 
@@ -559,48 +587,6 @@ def _configure_stdout() -> None:
         reconfigure(encoding="utf-8", errors="replace")
     except (OSError, ValueError):
         return
-
-
-def _registry_paths(out: Path) -> tuple[Path, Path]:
-    """Registry and helper paths beside the bank root (default: project root)."""
-
-    parent = Path(out).parent
-    return parent / REGISTRY_NAME, parent / HELPER_NAME
-
-
-def _write_index(storage: StorageManager, registry: Path, helper: Path) -> None:
-    """Write ``sound-bank.json`` and then ``sound-bank.ts`` from the manifest."""
-
-    _refuse_to_empty_the_registry(storage, registry)
-    export_registry(storage.entries(), registry)
-    export_typescript_helper(registry, helper)
-
-
-def _refuse_to_empty_the_registry(storage: StorageManager, registry: Path) -> None:
-    """Raise when an empty manifest would replace a registry full of sounds.
-
-    An empty bank is usually a lost or corrupt manifest, not an intentional
-    reset. Overwriting ``sound-bank.json`` (and then copying it into a
-    Remotion ``public/``) would destroy the only remaining index of audio the
-    user still has on disk, so the CLI stops and points at the quarantine file.
-    """
-
-    if storage.entries() or not registry.exists():
-        return
-    try:
-        existing = json.loads(registry.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        # An unreadable registry holds nothing worth preserving.
-        return
-    sounds = existing.get("sounds") if isinstance(existing, dict) else None
-    if not isinstance(sounds, list) or not sounds:
-        return
-
-    raise ValueError(
-        f"{registry} already lists {len(sounds)} sound(s) but the manifest is empty; "
-        f"refusing to overwrite it. Check {storage.corrupt_manifest_path} "
-        "and restore the bank before rebuilding."
-    )
 
 
 def _writes_bank(args: argparse.Namespace) -> bool:

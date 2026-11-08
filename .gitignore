@@ -10,3 +10,17 @@ sound-bank.ts
 *.mp3.part
 docs/
 .codegraph/
+
+# local tooling and secrets: never publish
+.claude/
+.cursor/*
+!.cursor/rules/
+.env
+.env.*
+*.log
+
+# build output and OS noise
+dist/
+build/
+.DS_Store
+Thumbs.db

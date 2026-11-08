@@ -2,7 +2,7 @@
 
 The server is Python's standard :mod:`http.server` on ``127.0.0.1`` only, so
 ``run.py --web`` needs no Node, no build step, and no extra dependency. It
-reuses the CLI's own layers — :class:`~remosound.scraper.MyInstantsScraper`,
+reuses the CLI's own layers — :class:`~remosound.scraper.Scraper` (via :mod:`remosound.providers`),
 :class:`~remosound.downloader.BulkDownloader`,
 :class:`~remosound.storage.StorageManager`, and
 :class:`~remosound.matcher.ContextualSoundMatcher` — so the ethics limits,
@@ -40,8 +40,9 @@ from rich.console import Console
 from remosound import __version__
 from remosound.downloader import MAX_CONCURRENCY, BulkDownloader
 from remosound.matcher import ContextualSoundMatcher
-from remosound.remotion_adapter import REMOTION_PREFIX
-from remosound.scraper import CATEGORIES, MIXKIT_CATEGORIES, InstantButton, MixkitScraper, MyInstantsScraper
+from remosound.remotion_adapter import REMOTION_PREFIX, write_index
+from remosound.providers import DEFAULT_PROVIDER, providers
+from remosound.scraper import InstantButton, Scraper
 from remosound.storage import StorageManager, category_slug
 
 HOST = "127.0.0.1"
@@ -55,7 +56,11 @@ JOB_HISTORY = 20
 CHUNK_SIZE = 64 * 1024
 
 WEB_DIR = Path(__file__).with_name("web")
-ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
+ASSETS_DIR = WEB_DIR / "assets"
+STATIC_DIR = WEB_DIR / "static"
+
+# Windows registries sometimes map .js to text/plain, which browsers refuse.
+_TYPES = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8"}
 INDEX_NAME = "index.html"
 
 _RANGE = re.compile(r"bytes=(\d*)-(\d*)$")
@@ -67,7 +72,7 @@ _RANGE = re.compile(r"bytes=(\d*)-(\d*)$")
 class DownloadJob:
     """Thread-safe progress record for one background download."""
 
-    def __init__(self, mode: str, target: str, limit: int, provider: str = "myinstants") -> None:
+    def __init__(self, mode: str, target: str, limit: int, provider: str = DEFAULT_PROVIDER) -> None:
         self.id = uuid.uuid4().hex[:12]
         self._lock = threading.Lock()
         self._data: dict = {
@@ -126,7 +131,8 @@ def start_download(
     target: str,
     limit: int,
     out: Path,
-    provider: str = "myinstants",
+    provider: str = DEFAULT_PROVIDER,
+    refresh_index: bool = False,
 ) -> DownloadJob:
     """Register a job and run it on a daemon thread.
 
@@ -137,7 +143,7 @@ def start_download(
     job = registry.add(DownloadJob(mode=mode, target=target, limit=limit, provider=provider))
     thread = threading.Thread(
         target=_run_job,
-        args=(job, mode, target, limit, Path(out), provider),
+        args=(job, mode, target, limit, Path(out), provider, refresh_index),
         name=f"remosound-{job.id}",
         daemon=True,
     )
@@ -145,23 +151,37 @@ def start_download(
     return job
 
 
-def _run_job(job: DownloadJob, mode: str, target: str, limit: int, out: Path, provider: str = "myinstants") -> None:
+def _run_job(
+    job: DownloadJob,
+    mode: str,
+    target: str,
+    limit: int,
+    out: Path,
+    provider: str = DEFAULT_PROVIDER,
+    refresh_index: bool = False,
+) -> None:
     """Own the job's event loop and turn every failure into job state."""
 
     job.update(state="running", started_at=time.time())
     try:
-        asyncio.run(_download_async(job, mode, target, limit, out, provider))
+        asyncio.run(_download_async(job, mode, target, limit, out, provider, refresh_index))
     except Exception as error:  # noqa: BLE001 - surfaced to the browser
         job.update(state="error", error=str(error), finished_at=time.time())
 
 
 async def _download_async(
-    job: DownloadJob, mode: str, target: str, limit: int, out: Path, provider: str = "myinstants"
+    job: DownloadJob,
+    mode: str,
+    target: str,
+    limit: int,
+    out: Path,
+    provider: str = DEFAULT_PROVIDER,
+    refresh_index: bool = False,
 ) -> None:
     """Scrape one listing, then download what the manifest does not already own."""
 
     storage = StorageManager(out)
-    scraper = MixkitScraper() if provider == "mixkit" else MyInstantsScraper()
+    scraper = providers()[provider].scraper()
     try:
         buttons = await _collect(scraper, mode, target, limit)
     finally:
@@ -182,6 +202,8 @@ async def _download_async(
         await downloader.close()
 
     failed = [button for button in pending if not storage.is_downloaded(button.id)]
+    if refresh_index:
+        write_index(storage, out)
     job.update(
         downloaded=len(pending) - len(failed),
         failed=len(failed),
@@ -192,7 +214,7 @@ async def _download_async(
 
 
 async def _collect(
-    scraper: MyInstantsScraper | MixkitScraper, mode: str, target: str, limit: int
+    scraper: Scraper, mode: str, target: str, limit: int
 ) -> list[InstantButton]:
     """Crawl the listing named by ``mode`` and ``target``."""
 
@@ -227,20 +249,15 @@ def bank_payload(storage: StorageManager) -> dict:
         "total": len(sounds),
         "sounds": sounds,
         "categories": categories,
-        "available": [{"name": label, "slug": slug} for label, slug in CATEGORIES],
+        "available": [{"name": label, "slug": slug} for label, slug in providers()[DEFAULT_PROVIDER].categories],
         "providers": [
             {
-                "id": "myinstants",
-                "name": "MyInstants",
-                "badge": "Community",
-                "categories": [{"name": label, "slug": slug} for label, slug in CATEGORIES],
-            },
-            {
-                "id": "mixkit",
-                "name": "Mixkit",
-                "badge": "Royalty-Free",
-                "categories": [{"name": label, "slug": slug} for label, slug in MIXKIT_CATEGORIES],
-            },
+                "id": provider.id,
+                "name": provider.name,
+                "badge": provider.badge,
+                "categories": [{"name": label, "slug": slug} for label, slug in provider.categories],
+            }
+            for provider in providers().values()
         ],
     }
 
@@ -345,9 +362,11 @@ class RemoSoundServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self, address: tuple[str, int], root: Path) -> None:
+    def __init__(self, address: tuple[str, int], root: Path, refresh_index: bool = False) -> None:
         super().__init__(address, _Handler)
         self.root = Path(root)
+        # Inside a Remotion project the lookup files must follow every change.
+        self.refresh_index = refresh_index
         self.jobs = JobRegistry()
 
     def storage(self) -> StorageManager:
@@ -374,7 +393,9 @@ class _Handler(BaseHTTPRequestHandler):
             elif route.path.startswith("/api/jobs/"):
                 self._serve_job(route.path.rsplit("/", 1)[-1])
             elif route.path.startswith("/assets/"):
-                self._serve_asset(route.path[len("/assets/") :])
+                self._serve_asset(ASSETS_DIR, route.path[len("/assets/") :])
+            elif route.path.startswith("/static/"):
+                self._serve_asset(STATIC_DIR, route.path[len("/static/") :])
             elif route.path in ("/favicon.ico", "/favicon.svg"):
                 self._send_empty(HTTPStatus.NO_CONTENT)
             else:
@@ -471,9 +492,9 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json({"error": "a category or search query is required"}, HTTPStatus.BAD_REQUEST)
             return
 
-        provider = str(payload.get("provider") or "myinstants").strip()
-        if provider not in ("myinstants", "mixkit"):
-            provider = "myinstants"
+        provider = str(payload.get("provider") or DEFAULT_PROVIDER).strip()
+        if provider not in providers():
+            provider = DEFAULT_PROVIDER
 
         job = start_download(
             self.server.jobs,
@@ -482,6 +503,7 @@ class _Handler(BaseHTTPRequestHandler):
             limit=clamp_limit(payload.get("limit")),
             out=self.server.root,
             provider=provider,
+            refresh_index=self.server.refresh_index,
         )
         self._send_json({"job": job.snapshot()}, HTTPStatus.ACCEPTED)
 
@@ -505,13 +527,19 @@ class _Handler(BaseHTTPRequestHandler):
         if not deleted:
             self._send_json({"error": "sound not found in the bank"}, HTTPStatus.NOT_FOUND)
             return
+        if self.server.refresh_index:
+            try:
+                write_index(storage, self.server.root)
+            except (OSError, ValueError):
+                # Emptying the bank is allowed; the guard only protects a lost manifest.
+                pass
 
         self._send_json({"ok": True, "deleted": deleted, "id": deleted[0] if len(deleted) == 1 else None})
 
-    def _serve_asset(self, raw_path: str) -> None:
+    def _serve_asset(self, base: Path, raw_path: str) -> None:
         rel_path = unquote(raw_path).lstrip("/\\")
-        candidate = (ASSETS_DIR / rel_path).resolve()
-        if candidate != ASSETS_DIR and ASSETS_DIR not in candidate.parents:
+        candidate = (base / rel_path).resolve()
+        if candidate != base and base not in candidate.parents:
             self._send_json({"error": "forbidden"}, HTTPStatus.FORBIDDEN)
             return
         if not candidate.is_file():
@@ -524,7 +552,7 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json({"error": f"could not read asset: {error}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
             return
 
-        content_type = mimetypes.guess_type(candidate.name)[0] or "application/octet-stream"
+        content_type = _TYPES.get(candidate.suffix) or mimetypes.guess_type(candidate.name)[0] or "application/octet-stream"
         self._send_bytes(body, content_type)
 
     def _match(self, payload: dict) -> None:
@@ -580,10 +608,11 @@ def serve(
     port: int = DEFAULT_PORT,
     open_browser: bool = True,
     console: Console | None = None,
+    refresh_index: bool = False,
 ) -> None:
     """Serve the studio until Ctrl+C, choosing the first free port."""
 
-    server = _bind(Path(out), port)
+    server = _bind(Path(out), port, refresh_index)
     url = f"http://{HOST}:{server.server_address[1]}/"
     message = f"RemoSound studio running at [bold green]{url}[/bold green] (Ctrl+C to stop)"
     (console or Console()).print(message)
@@ -597,13 +626,13 @@ def serve(
         server.server_close()
 
 
-def _bind(root: Path, port: int) -> RemoSoundServer:
+def _bind(root: Path, port: int, refresh_index: bool = False) -> RemoSoundServer:
     """Bind the first free port in ``port..port+9``, or report the last error."""
 
     last_error: OSError | None = None
     for candidate in range(port, port + PORT_ATTEMPTS):
         try:
-            return RemoSoundServer((HOST, candidate), root)
+            return RemoSoundServer((HOST, candidate), root, refresh_index)
         except OSError as error:
             last_error = error
     raise OSError(

@@ -5,7 +5,7 @@ alwaysApply: true
 
 # RemoSound
 
-Python CLI that bulk-downloads MyInstants and Mixkit (royalty-free) sound effects into `downloads/` and
+Python CLI that bulk-downloads sounds (Mixkit built in, other sources as provider plugins) into `downloads/` and
 matches them to Remotion scenes. `run.py` is the only entrypoint — extend it
 instead of adding scripts.
 
@@ -51,9 +51,10 @@ exclusive.
 | `--trending` | Collect trending sounds |
 | `--category NAME` | Collect sounds from one category |
 | `--search QUERY` | Collect sounds matching search query |
-| `--provider P` | Audio provider: `myinstants` (default) or `mixkit` (royalty-free) |
+| `--provider P` | Sound source: `mixkit` (default, built in) or any plugin id |
 | `--delete ID` | Delete a sound from bank and manifest by ID |
 | `--limit N` | Sounds to collect; default 100, capped at 5000 per run |
+| `--project DIR` | Remotion project: bank lives in `DIR/public/remosound`, no copying |
 | `--out DIR` | Bank root, default `downloads` |
 | `--dry-run` | Print the plan; write nothing |
 | `--max-concurrency N` | Parallel downloads, default 5; may only lower the cap |
@@ -66,7 +67,7 @@ codes: `0` success, `1` runtime failure, `2` usage error.
 
 `scraper` → `downloader` → `storage` → `matcher` → `remotion_adapter` → `cli`
 and `web`. `web.py` serves the studio and streams audio by manifest id; its UI
-is `web/index.html`. Lower layers never import `cli` or `web`; neither imports
+is `web/index.html` with `web/static/studio.css` and `studio.js`. Lower layers never import `cli` or `web`; neither imports
 the other; nothing but `run.py` touches `sys.argv`.
 
 ## Hard rules
@@ -82,5 +83,5 @@ the other; nothing but `run.py` touches `sys.argv`.
   `/api/audio?id=<instant-id>` after a bank-root containment check.
 - `downloads/`, `sound-bank.json`, and `sound-bank.ts` are runtime data, not
   source — never commit or hand-edit them.
-- Audio is community-uploaded MyInstants content or royalty-free Mixkit content; verify rights before
+- The repo ships no audio. Mixkit is royalty-free; plugin sources may be copyrighted; verify rights before
   commercial use (see `README.md`).
