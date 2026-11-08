@@ -117,6 +117,8 @@
   main { max-width: 1180px; margin: 0 auto; padding: 34px 28px 150px; }
 
   .hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 28px; flex-wrap: wrap; }
+  .hero-logo-wrap { margin-bottom: 14px; }
+  .hero-logo { height: 48px; width: auto; object-fit: contain; filter: drop-shadow(0 4px 16px rgba(34, 197, 94, .2)); }
   .hero h1 {
     margin: 0 0 8px;
     font-size: clamp(26px, 3.6vw, 38px);
@@ -765,6 +767,9 @@
   <main>
     <section class="hero">
       <div>
+        <div class="hero-logo-wrap">
+          <img src="/assets/Logo utama.png" alt="RemoSound" class="hero-logo">
+        </div>
         <h1>Your sound bank, <em>ready to score.</em></h1>
         <p>Browse and preview every downloaded cue, pull new sounds from MyInstants or Mixkit (royalty-free), and turn a scene description into Remotion-ready audio.</p>
       </div>
@@ -1158,9 +1163,6 @@
             <span class="sound-file">${esc(sound.path.split("/").pop() || sound.id)}</span>
           </span>
         </span>
-        <button class="card-delete" type="button" data-delete-id="${esc(sound.id)}" title="Delete this sound" aria-label="Delete ${esc(sound.title)}">
-          ${ICONS.trash}
-        </button>
         <span class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
       </div>`;
   }
@@ -1253,13 +1255,6 @@
       if (card) card.classList.toggle("is-selected", chk.checked);
       updateSelectionBar();
       event.stopPropagation();
-      return;
-    }
-
-    const delBtn = event.target.closest("[data-delete-id]");
-    if (delBtn) {
-      event.stopPropagation();
-      promptDelete([delBtn.dataset.deleteId]);
       return;
     }
 
@@ -1630,7 +1625,6 @@
             </div>
             <div class="match-actions">
               <button class="btn btn-ghost" type="button" data-play="${esc(match.id)}" aria-label="Play ${esc(match.title)}">${ICONS.play} Preview</button>
-              <button class="card-delete" type="button" data-delete-id="${esc(match.id)}" title="Delete sound" aria-label="Delete ${esc(match.title)}">${ICONS.trash}</button>
             </div>
           </article>`;
       })
@@ -1638,13 +1632,6 @@
   }
 
   $("#matches").addEventListener("click", async (event) => {
-    const del = event.target.closest("[data-delete-id]");
-    if (del) {
-      event.stopPropagation();
-      promptDelete(del.dataset.deleteId);
-      return;
-    }
-
     const copy = event.target.closest("[data-copy]");
     if (copy) {
       const code = copy.dataset.copy;
