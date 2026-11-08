@@ -278,9 +278,12 @@ main { max-width: 1180px; margin: 0 auto; padding: 34px 28px 150px; }
   font-weight: 600;
   letter-spacing: -.01em;
 }
-.sound-sub { display: flex; align-items: center; gap: 8px; margin-top: 4px; min-width: 0; }
+.sound-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 4px; min-width: 0; }
 .badge {
   flex: none;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   padding: 2px 7px;
   border: 1px solid var(--border);
   border-radius: 6px;
