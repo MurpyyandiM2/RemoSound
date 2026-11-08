@@ -387,3 +387,8 @@ def test_asset_serving_returns_logo(studio):
     assert headers["Content-Type"] == "image/png"
     assert len(body) > 0
 
+    status2, headers2, body2 = get(base + "/assets/logo.png")
+    assert status2 == 200
+    assert headers2["Content-Type"] == "image/png"
+    assert len(body2) > 0
+

@@ -1,0 +1,6 @@
+fix: ensure web studio serves static logos with clean paths and reload server
+
+- Add space-free asset aliases (logo.png, icon.png, logo-green.png)
+- Use /assets/logo.png with fallback in header, hero banner, and footer
+- Terminate stale web server process and verify live 200 responses
+- All 237 test suite checks pass
