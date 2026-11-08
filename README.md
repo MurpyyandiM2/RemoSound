@@ -174,8 +174,8 @@ one copy of every sound, and it is ready for `staticFile()` the moment it
 downloads:
 
 ```bat
-.venv\Scripts\python.exe run.py --search "wind" --project C:ideos\my-video
-.venv\Scripts\python.exe run.py --web --project C:ideos\my-video
+.venv\Scripts\python.exe run.py --search "wind" --project C:\Users\you\videos\my-video
+.venv\Scripts\python.exe run.py --web --project C:\Users\you\videos\my-video
 ```
 
 Sounds land in `my-video/public/remosound/<category>/`, and `sound-bank.json` and
