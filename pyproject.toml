@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "remosound"
-version = "0.1.1"
+version = "0.1.2"
 description = "Bulk-download MyInstants sound effects into a local sound bank and match them to Remotion scenes."
 readme = "README.md"
 requires-python = ">=3.12"

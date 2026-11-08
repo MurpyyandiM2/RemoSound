@@ -161,7 +161,7 @@ def test_parse_range_rejects_what_it_cannot_serve(header, size):
 
 @pytest.mark.parametrize(
     ("value", "expected"),
-    [(None, 100), ("abc", 100), (0, 1), (-5, 1), (12, 12), (99999, 5000)],
+    [(None, 100), ("abc", 100), (0, 1), (-5, 1), (12, 12), (99999, 1000)],
 )
 def test_clamp_limit_keeps_requests_inside_the_ethics_cap(value, expected):
     assert clamp_limit(value) == expected
@@ -494,3 +494,18 @@ def test_a_second_download_is_refused_while_one_runs(studio, monkeypatch):
     assert first_status == 202
     assert second_status == 409
     assert "already running" in second["error"]
+
+
+def test_a_negative_content_length_is_rejected(studio):
+    import http.client
+
+    base, _bank = studio
+    host, port = base.removeprefix("http://").split(":")
+    connection = http.client.HTTPConnection(host, int(port), timeout=5)
+    connection.putrequest("POST", "/api/match")
+    connection.putheader("Content-Type", "application/json")
+    connection.putheader("Content-Length", "-1")
+    connection.endheaders()
+
+    assert connection.getresponse().status == 400
+    connection.close()

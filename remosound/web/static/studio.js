@@ -500,7 +500,7 @@
   );
 
   $("#start").addEventListener("click", async () => {
-    const limit = Math.max(1, Math.min(5000, Number.parseInt($("#limit").value, 10) || 50));
+    const limit = Math.max(1, Math.min(1000, Number.parseInt($("#limit").value, 10) || 50));
     $("#limit").value = String(limit);
 
     let mode = state.source.mode;

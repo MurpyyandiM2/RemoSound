@@ -4,7 +4,20 @@
   <img src="remosound/web/assets/logo-banner.png" alt="RemoSound" width="520">
 </p>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+<p align="center">
+  <a href="https://github.com/MurpyyandiM2/RemoSound/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/MurpyyandiM2/RemoSound?color=22c55e"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg"></a>
+  <a href="https://murpyyandim2.github.io/RemoSound/"><img alt="Website" src="https://img.shields.io/badge/website-live-22c55e"></a>
+  <a href="https://github.com/MurpyyandiM2/RemoSound/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/MurpyyandiM2/RemoSound?style=flat"></a>
+</p>
+
+<p align="center">
+  <img alt="Python 3.12+" src="https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white">
+  <img alt="JavaScript" src="https://img.shields.io/badge/JavaScript-F7DF1E?logo=javascript&logoColor=black">
+  <img alt="HTML5" src="https://img.shields.io/badge/HTML5-E34F26?logo=html5&logoColor=white">
+  <img alt="CSS3" src="https://img.shields.io/badge/CSS3-1572B6?logo=css3&logoColor=white">
+  <a href="https://www.remotion.dev/"><img alt="Made for Remotion" src="https://img.shields.io/badge/made%20for-Remotion-0B84F3"></a>
+</p>
 
 RemoSound is a bulk sound downloader, a Python CLI and a portable Agent Skill.
 It fills a local **sound bank** from the sources you choose, then matches those
@@ -73,7 +86,7 @@ entrypoint — there are no separate scripts to remember.
 
 The mode flags (`--trending`, `--category`, `--search`, `--match`,
 `--delete`, `--rebuild-index`, `--web`) are mutually exclusive. `--limit` defaults to 100
-and is capped at 5000 per run. `--remotion-public` needs a batch command or
+and is capped at 1000 per run. `--remotion-public` needs a batch command or
 `--rebuild-index`. Exit codes: `0` success, `1` runtime failure, `2` usage
 error.
 
@@ -229,11 +242,21 @@ prefix the returned `path` with `remosound/` before passing it to
 ## Etiquette and limits
 
 RemoSound is deliberately gentle with remote providers: at most **5 concurrent
-downloads**, at least **0.5 s between page fetches**, at most **5000 sounds per
+downloads**, at least **0.5 s between page fetches**, at most **1000 sounds per
 run**, and exponential backoff (0.5 s, 1 s, 2 s) on HTTP 429 before it gives up
 after 3 retries. `--max-concurrency` can lower the concurrency limit but never
-raise it, and `--limit` cannot request more than 5000 in one run: asking for
-`999999999` simply gives 5000.
+raise it, and `--limit` cannot request more than 1000 in one run: asking for
+`999999999` simply gives 1000.
+
+On top of that, download starts are spaced at least 0.2 s apart, and a daily
+budget of **3000 downloads** is shared by every run and every bank (it is kept
+in `~/.remosound/budget.json`). When it is spent, RemoSound stops and says so;
+try again tomorrow.
+
+An audio link comes from a remote page, so it is never trusted: only `http(s)`
+links to **public** addresses are fetched (a link to `127.0.0.1`, your LAN or a
+cloud metadata address is refused, and so is a redirect to one), and one file
+may not exceed **50 MB**. See [SECURITY.md](SECURITY.md).
 
 These limits live in the shared layers, so a provider plugin cannot opt out of
 them: the delay between fetches has a 0.5 s floor, and one listing is never

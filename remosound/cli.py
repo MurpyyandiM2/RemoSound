@@ -53,13 +53,13 @@ from remosound.remotion_adapter import (
     write_index,
 )
 from remosound.providers import DEFAULT_PROVIDER, providers
+from remosound.safety import MAX_LIMIT
 from remosound.scraper import InstantButton, Scraper
 from remosound.storage import StorageManager
 from remosound.web import serve as serve_web
 
 DEFAULT_OUT = "downloads"
 DEFAULT_LIMIT = 100
-MAX_LIMIT = 5000
 DEFAULT_CONCURRENCY = 5
 MATCH_LIMIT = 5
 
@@ -452,6 +452,9 @@ async def _download(
             await downloader.download_batch(pending, on_progress=on_progress)
     finally:
         await downloader.close()
+    budget = getattr(downloader, "budget", None)
+    if budget is not None and budget.exhausted():
+        console.print(f"[yellow]Daily download limit ({budget.limit}) reached. Try again tomorrow.[/yellow]")
 
 
 def _fit_title(title: str, width: int = PROGRESS_TITLE_WIDTH) -> str:

@@ -154,10 +154,10 @@ def test_match_rejects_blank_scene_text(value):
         build_parser().parse_args(["--match", value])
 
 
-def test_limit_is_capped_at_5000_per_run():
+def test_limit_is_capped_at_1000_per_run():
     args = build_parser().parse_args(["--limit", "99999"])
 
-    assert args.limit == 5000
+    assert args.limit == 1000
 
 
 def test_max_concurrency_rejects_zero():
@@ -189,7 +189,7 @@ def test_help_lists_every_flag_and_the_limit_cap():
         "--dry-run",
     ):
         assert flag in help_text
-    assert "5000" in help_text
+    assert "1000" in help_text
 
 
 @pytest.mark.parametrize(

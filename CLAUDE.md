@@ -74,7 +74,7 @@ exclusive.
 | `--search QUERY` | Collect sounds matching search query |
 | `--provider P` | Sound source: `mixkit` (default, built in) or any plugin id |
 | `--delete ID` | Delete a sound from bank and manifest by ID |
-| `--limit N` | Sounds to collect; default 100, capped at 5000 per run |
+| `--limit N` | Sounds to collect; default 100, capped at 1000 per run |
 | `--project DIR` | Remotion project: bank lives in `DIR/public/remosound`, no copying |
 | `--out DIR` | Bank root, default `downloads` |
 | `--dry-run` | Print the plan; write nothing |
@@ -128,7 +128,11 @@ imports the other, and nothing but `run.py` touches `sys.argv`.
   never raise it).
 - At least **0.5 s between page fetches** (a plugin cannot lower it) and at
   most **250 pages** walked per listing.
-- At most **5000 sounds per run** — `--limit` cannot request more.
+- At most **1000 sounds per run** — `--limit` cannot request more — and at most
+  **3000 downloads per day** across all runs.
+- Downloads start at least **0.2 s** apart. Audio links must be `http(s)` to a
+  public address (redirects included); one file may not exceed **50 MB**.
+All of these live in `remosound/safety.py`; raising them is a regression.
 - The web studio runs **one download job at a time** and refuses a foreign
   `Host`/`Origin` header or a non-JSON POST.
 - Honor HTTP **429** with exponential backoff: 0.5 s, 1 s, 2 s, then give up

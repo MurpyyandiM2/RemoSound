@@ -23,17 +23,26 @@ import hashlib
 import logging
 import os
 import re
+import time
 from collections.abc import Callable
 from pathlib import Path
 
 import httpx
 
+from remosound.safety import (
+    MAX_CONCURRENCY,
+    MAX_FILE_BYTES,
+    MAX_REDIRECTS,
+    MIN_START_GAP,
+    DailyBudget,
+    UnsafeDownloadError,
+    require_public_http_url,
+)
 from remosound.scraper import USER_AGENT, InstantButton
 from remosound.storage import StorageManager, sanitize_filename
 
 log = logging.getLogger(__name__)
 
-MAX_CONCURRENCY = 5
 MIN_CONCURRENCY = 1
 
 # Tags derived from the title feed the matcher's tag dimension. They stay short
@@ -101,8 +110,12 @@ class BulkDownloader:
         storage: StorageManager,
         max_concurrency: int = MAX_CONCURRENCY,
         client: httpx.AsyncClient | None = None,
+        budget: DailyBudget | None = None,
     ) -> None:
         self.storage = storage
+        self.budget = budget or DailyBudget()
+        self._start_lock = asyncio.Lock()
+        self._last_start = 0.0
         self.max_concurrency = max(MIN_CONCURRENCY, min(MAX_CONCURRENCY, max_concurrency))
         self.semaphore = asyncio.Semaphore(self.max_concurrency)
         self._id_locks: dict[str, asyncio.Lock] = {}
@@ -165,15 +178,20 @@ class BulkDownloader:
                     return None
                 if target.exists():
                     return self._adopt(button, target, persist)
+                if self.budget.exhausted():
+                    log.warning("daily download limit reached; skipping %s", button.id)
+                    return None
+                await self._pace()
                 try:
                     await self._transfer(button, target)
-                except (httpx.HTTPError, OSError, EmptyDownloadError) as error:
+                except (httpx.HTTPError, OSError, EmptyDownloadError, UnsafeDownloadError) as error:
                     log.warning("could not download %s: %s", button.id, error)
                     return None
 
                 # Mutate and persist without an intervening await, so concurrent
                 # record/save pairs cannot lose one another's entries.
                 self._record(button, target, persist)
+                self.budget.spend()
                 return target
         finally:
             self._release_id_lock(button.id)
@@ -329,14 +347,45 @@ class BulkDownloader:
             part.unlink(missing_ok=True)
             raise
 
-    async def _stream_to(self, url: str, part: Path) -> None:
-        """Write the response body at ``url`` to ``part`` chunk by chunk."""
+    async def _pace(self) -> None:
+        """Space download starts at least ``MIN_START_GAP`` apart, even across the 5 workers."""
 
-        async with self.client.stream("GET", url) as response:
-            response.raise_for_status()
-            with part.open("wb") as handle:
-                async for chunk in response.aiter_bytes(CHUNK_SIZE):
-                    handle.write(chunk)
+        async with self._start_lock:
+            wait = self._last_start + MIN_START_GAP - time.monotonic()
+            if wait > 0:
+                await asyncio.sleep(wait)
+            self._last_start = time.monotonic()
+
+    async def _stream_to(self, url: str, part: Path) -> None:
+        """Write the body at ``url`` to ``part``, refusing unsafe links and oversized files.
+
+        The link came from a remote page, so every hop (redirects are followed
+        by hand) must resolve to a public address, and the body is cut off at
+        ``MAX_FILE_BYTES`` so a hostile source cannot fill the disk.
+        """
+
+        for _hop in range(MAX_REDIRECTS + 1):
+            await require_public_http_url(url)
+            async with self.client.stream("GET", url, follow_redirects=False) as response:
+                if response.has_redirect_location:
+                    url = str(response.url.join(response.headers["location"]))
+                    continue
+                response.raise_for_status()
+                try:
+                    declared = int(response.headers.get("content-length") or 0)
+                except ValueError:
+                    declared = 0
+                if declared > MAX_FILE_BYTES:
+                    raise UnsafeDownloadError(f"{url} is larger than {MAX_FILE_BYTES // (1024 * 1024)} MB")
+                written = 0
+                with part.open("wb") as handle:
+                    async for chunk in response.aiter_bytes(CHUNK_SIZE):
+                        written += len(chunk)
+                        if written > MAX_FILE_BYTES:
+                            raise UnsafeDownloadError(f"{url} is larger than {MAX_FILE_BYTES // (1024 * 1024)} MB")
+                        handle.write(chunk)
+                return
+        raise UnsafeDownloadError(f"too many redirects for {url}")
 
 
 def _is_retryable(error: httpx.HTTPError) -> bool:

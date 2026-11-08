@@ -53,7 +53,7 @@ exclusive.
 | `--search QUERY` | Collect sounds matching search query |
 | `--provider P` | Sound source: `mixkit` (default, built in) or any plugin id |
 | `--delete ID` | Delete a sound from bank and manifest by ID |
-| `--limit N` | Sounds to collect; default 100, capped at 5000 per run |
+| `--limit N` | Sounds to collect; default 100, capped at 1000 per run |
 | `--project DIR` | Remotion project: bank lives in `DIR/public/remosound`, no copying |
 | `--out DIR` | Bank root, default `downloads` |
 | `--dry-run` | Print the plan; write nothing |
@@ -75,7 +75,8 @@ the other; nothing but `run.py` touches `sys.argv`.
 - Max 5 concurrent downloads (`--max-concurrency` only lowers it), ≥0.5 s
   between page fetches, exponential backoff on HTTP 429 (0.5 s, 1 s, 2 s, then
   give up after 3 retries).
-- Max 5000 sounds per run (`--limit` cannot request more).
+- Max 1000 sounds per run and 3000 per day (`--limit` cannot request more); limits live in `remosound/safety.py`.
+- Audio links must be `http(s)` to public addresses; files are capped at 50 MB.
 - Never re-download anything already in `downloads/manifest.json`; partial
   files use `.part` and are removed on failure.
 - Sanitize every filename for Windows and never produce an empty stem.

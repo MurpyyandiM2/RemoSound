@@ -42,6 +42,7 @@ from remosound.downloader import MAX_CONCURRENCY, BulkDownloader
 from remosound.matcher import ContextualSoundMatcher
 from remosound.remotion_adapter import REMOTION_PREFIX, write_index
 from remosound.providers import DEFAULT_PROVIDER, providers
+from remosound.safety import MAX_LIMIT
 from remosound.scraper import InstantButton, Scraper
 from remosound.storage import StorageManager, category_slug
 
@@ -49,7 +50,6 @@ HOST = "127.0.0.1"
 DEFAULT_PORT = 5000
 PORT_ATTEMPTS = 10
 
-MAX_LIMIT = 5000
 MAX_MATCH_RESULTS = 8
 MAX_BODY_BYTES = 1_000_000
 JOB_HISTORY = 20
@@ -351,7 +351,7 @@ def parse_range(header: str, size: int) -> tuple[int, int] | None:
 
 
 def clamp_limit(value: object) -> int:
-    """Coerce a browser-supplied limit into ``1..5000``."""
+    """Coerce a browser-supplied limit into ``1..MAX_LIMIT``."""
 
     try:
         number = int(value)  # type: ignore[arg-type]
@@ -381,6 +381,8 @@ class RemoSoundServer(ThreadingHTTPServer):
 
 
 class _Handler(BaseHTTPRequestHandler):
+    # A client that stalls mid-request must not hold a thread forever.
+    timeout = 30
     server: RemoSoundServer
     protocol_version = "HTTP/1.1"
 
@@ -599,6 +601,9 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             length = int(self.headers.get("Content-Length") or 0)
         except ValueError:
+            self._send_json({"error": "bad content length"}, HTTPStatus.BAD_REQUEST)
+            return None
+        if length < 0:
             self._send_json({"error": "bad content length"}, HTTPStatus.BAD_REQUEST)
             return None
         if length > MAX_BODY_BYTES:
