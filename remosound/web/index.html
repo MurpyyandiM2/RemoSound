@@ -306,6 +306,59 @@
     background: rgba(248, 113, 113, .14);
     border-color: rgba(248, 113, 113, .3);
   }
+  .sound-select-chk {
+    width: 17px;
+    height: 17px;
+    accent-color: var(--green);
+    cursor: pointer;
+    margin: 0;
+    flex: none;
+    border-radius: 4px;
+  }
+  .sound-card.is-selected {
+    border-color: rgba(99, 102, 241, .65);
+    background: linear-gradient(180deg, rgba(99, 102, 241, .14), #121218);
+    box-shadow: 0 0 0 1px rgba(99, 102, 241, .25);
+  }
+  .selection-bar {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    flex-wrap: wrap;
+  }
+  .select-all-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    color: var(--muted);
+    font-size: 12.5px;
+    font-weight: 550;
+    cursor: pointer;
+    user-select: none;
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: var(--surface);
+    transition: all .15s ease;
+  }
+  .select-all-label:hover {
+    color: var(--text);
+    border-color: var(--border-strong);
+  }
+  .select-all-label input[type="checkbox"] {
+    width: 15px;
+    height: 15px;
+    accent-color: var(--green);
+    cursor: pointer;
+    margin: 0;
+  }
+  .btn-sm {
+    min-height: 32px;
+    padding: 0 12px;
+    font-size: 12px;
+    border-radius: 8px;
+  }
   .sound-file {
     overflow: hidden;
     text-overflow: ellipsis;
@@ -746,6 +799,18 @@
           <span class="kbd" aria-hidden="true">Ctrl K</span>
         </div>
         <div class="pills" id="filters" role="group" aria-label="Filter by category"></div>
+        <div class="selection-bar" id="selection-bar">
+          <label class="select-all-label" title="Select or deselect all displayed sounds">
+            <input type="checkbox" id="chk-select-all" aria-label="Select all displayed sounds">
+            <span>Select All</span>
+          </label>
+          <button class="btn btn-danger btn-sm" id="btn-delete-selected" type="button" hidden>
+            Delete Selected (<span id="selected-count">0</span>)
+          </button>
+          <button class="btn btn-ghost btn-sm" id="btn-cancel-selection" type="button" hidden>
+            Deselect
+          </button>
+        </div>
       </div>
       <div class="sound-grid" id="sound-grid" aria-live="polite"></div>
       <div class="empty" id="board-empty" hidden>
@@ -938,11 +1003,12 @@
     dmode: "category",
     query: "",
     category: "all",
+    selectedIds: new Set(),
     source: { mode: "trending", target: "" },
     jobId: null,
     jobTimer: null,
     activeId: null,
-    pendingDeleteId: null,
+    pendingDeleteIds: [],
     muted: false,
   };
 
@@ -1074,11 +1140,13 @@
 
   function soundCard(sound) {
     const playing = state.activeId === sound.id && !audio.paused;
+    const selected = state.selectedIds.has(sound.id);
     const providerBadge = sound.provider === "mixkit"
       ? `<span class="badge badge-mixkit">Royalty-Free</span>`
       : `<span class="badge badge-myinstants">Community</span>`;
     return `
-      <div class="sound-card ${playing ? "is-playing" : ""}" data-id="${esc(sound.id)}">
+      <div class="sound-card ${playing ? "is-playing" : ""} ${selected ? "is-selected" : ""}" data-id="${esc(sound.id)}">
+        <input type="checkbox" class="sound-select-chk" data-select-id="${esc(sound.id)}" ${selected ? "checked" : ""} aria-label="Select ${esc(sound.title)}">
         <button class="card-play" type="button" data-play-id="${esc(sound.id)}" aria-pressed="${playing}" aria-label="${playing ? "Pause" : "Play"} ${esc(sound.title)}">
           ${playing ? ICONS.pause : ICONS.play}
         </button>
@@ -1090,7 +1158,7 @@
             <span class="sound-file">${esc(sound.path.split("/").pop() || sound.id)}</span>
           </span>
         </span>
-        <button class="card-delete" type="button" data-delete-id="${esc(sound.id)}" title="Delete sound" aria-label="Delete ${esc(sound.title)}">
+        <button class="card-delete" type="button" data-delete-id="${esc(sound.id)}" title="Delete this sound" aria-label="Delete ${esc(sound.title)}">
           ${ICONS.trash}
         </button>
         <span class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
@@ -1113,7 +1181,49 @@
         : "Download a first batch and it lands here, ready to preview and drop into a video.";
       $("#empty-cta").hidden = searching;
     }
+    updateSelectionBar();
   }
+
+  function updateSelectionBar() {
+    const displayed = filteredSounds();
+    const count = state.selectedIds.size;
+    const btnDelete = $("#btn-delete-selected");
+    const btnCancel = $("#btn-cancel-selection");
+    const chkAll = $("#chk-select-all");
+    const countSpan = $("#selected-count");
+
+    if (countSpan) countSpan.textContent = String(count);
+    if (btnDelete) btnDelete.hidden = count === 0;
+    if (btnCancel) btnCancel.hidden = count === 0;
+
+    if (chkAll) {
+      const allDisplayedSelected = displayed.length > 0 && displayed.every((s) => state.selectedIds.has(s.id));
+      chkAll.checked = allDisplayedSelected;
+      chkAll.indeterminate = count > 0 && !allDisplayedSelected;
+    }
+  }
+
+  $("#chk-select-all").addEventListener("change", (event) => {
+    const checked = event.target.checked;
+    const displayed = filteredSounds();
+    if (checked) {
+      displayed.forEach((sound) => state.selectedIds.add(sound.id));
+    } else {
+      displayed.forEach((sound) => state.selectedIds.delete(sound.id));
+    }
+    renderSounds();
+  });
+
+  $("#btn-cancel-selection").addEventListener("click", () => {
+    state.selectedIds.clear();
+    renderSounds();
+  });
+
+  $("#btn-delete-selected").addEventListener("click", () => {
+    const ids = Array.from(state.selectedIds);
+    if (ids.length === 0) return;
+    promptDelete(ids);
+  });
 
   $("#filters").addEventListener("click", (event) => {
     const pill = event.target.closest(".pill");
@@ -1131,23 +1241,51 @@
   $("#empty-cta").addEventListener("click", () => selectTab("download"));
 
   $("#sound-grid").addEventListener("click", (event) => {
+    const chk = event.target.closest(".sound-select-chk");
+    if (chk) {
+      const id = chk.dataset.selectId;
+      if (chk.checked) {
+        state.selectedIds.add(id);
+      } else {
+        state.selectedIds.delete(id);
+      }
+      const card = chk.closest(".sound-card");
+      if (card) card.classList.toggle("is-selected", chk.checked);
+      updateSelectionBar();
+      event.stopPropagation();
+      return;
+    }
+
     const delBtn = event.target.closest("[data-delete-id]");
     if (delBtn) {
       event.stopPropagation();
-      promptDelete(delBtn.dataset.deleteId);
+      promptDelete([delBtn.dataset.deleteId]);
       return;
     }
+
+    const playTrigger = event.target.closest("[data-play-id]");
+    if (playTrigger) {
+      const sound = state.sounds.find((item) => item.id === playTrigger.dataset.playId);
+      if (sound) toggleSound(sound);
+      return;
+    }
+
     const card = event.target.closest(".sound-card");
     if (!card) return;
     const sound = state.sounds.find((item) => item.id === card.dataset.id);
     if (sound) toggleSound(sound);
   });
 
-  function promptDelete(soundId) {
-    const sound = state.sounds.find((s) => s.id === soundId);
-    state.pendingDeleteId = soundId;
-    const title = sound ? sound.title : soundId;
-    $("#delete-modal-msg").innerHTML = `Are you sure you want to delete <strong>${esc(title)}</strong>? This will permanently remove the audio file from your sound bank and manifest.`;
+  function promptDelete(ids) {
+    if (!Array.isArray(ids) || ids.length === 0) return;
+    state.pendingDeleteIds = ids;
+    if (ids.length === 1) {
+      const sound = state.sounds.find((s) => s.id === ids[0]);
+      const title = sound ? sound.title : ids[0];
+      $("#delete-modal-msg").innerHTML = `Are you sure you want to delete <strong>${esc(title)}</strong>? This will permanently remove the audio file from your sound bank and manifest.`;
+    } else {
+      $("#delete-modal-msg").innerHTML = `Are you sure you want to delete <strong>${ids.length} selected sounds</strong>? This will permanently remove the audio files from your sound bank and manifest.`;
+    }
     const modal = $("#delete-modal");
     if (typeof modal.showModal === "function") {
       modal.showModal();
@@ -1163,30 +1301,33 @@
     } else {
       modal.removeAttribute("open");
     }
-    state.pendingDeleteId = null;
+    state.pendingDeleteIds = [];
   }
 
   $("#delete-modal-cancel").addEventListener("click", closeDeleteModal);
 
   $("#delete-modal-confirm").addEventListener("click", async () => {
-    const id = state.pendingDeleteId;
-    if (!id) return;
+    const ids = state.pendingDeleteIds;
+    if (!ids || ids.length === 0) return;
     try {
       await api("/api/delete", {
         method: "POST",
-        body: JSON.stringify({ id }),
+        body: JSON.stringify({ ids }),
       });
-      if (state.activeId === id) {
+      if (state.activeId && ids.includes(state.activeId)) {
         audio.pause();
         audio.removeAttribute("src");
         audio.load();
         state.activeId = null;
         $("#player").hidden = true;
       }
+      ids.forEach((id) => state.selectedIds.delete(id));
       closeDeleteModal();
-      toast("Sound deleted from your sound bank.");
+      toast(ids.length === 1 ? "Sound deleted from sound bank." : `${ids.length} sounds deleted from sound bank.`);
       await loadBank();
-      $$(`.match[data-id="${id}"]`).forEach((el) => el.remove());
+      ids.forEach((id) => {
+        $$(`.match[data-id="${id}"]`).forEach((el) => el.remove());
+      });
     } catch (error) {
       toast(error.message, "error");
       closeDeleteModal();

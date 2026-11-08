@@ -486,19 +486,27 @@ class _Handler(BaseHTTPRequestHandler):
         self._send_json({"job": job.snapshot()}, HTTPStatus.ACCEPTED)
 
     def _delete_sound(self, payload: dict) -> None:
-        sound_id = str(payload.get("id") or "").strip()
-        if not sound_id:
-            self._send_json({"error": "sound id is required"}, HTTPStatus.BAD_REQUEST)
+        raw_ids = payload.get("ids")
+        if raw_ids is not None:
+            if not isinstance(raw_ids, list):
+                self._send_json({"error": "ids must be a list"}, HTTPStatus.BAD_REQUEST)
+                return
+            ids = [str(i).strip() for i in raw_ids if str(i).strip()]
+        else:
+            single = str(payload.get("id") or "").strip()
+            ids = [single] if single else []
+
+        if not ids:
+            self._send_json({"error": "sound id or ids required"}, HTTPStatus.BAD_REQUEST)
             return
+
         storage = self.server.storage()
-        if not storage.is_downloaded(sound_id):
+        deleted = storage.delete_sounds(ids)
+        if not deleted:
             self._send_json({"error": "sound not found in the bank"}, HTTPStatus.NOT_FOUND)
             return
-        success = storage.delete_sound(sound_id)
-        if success:
-            self._send_json({"ok": True, "id": sound_id})
-        else:
-            self._send_json({"error": "could not delete sound"}, HTTPStatus.INTERNAL_SERVER_ERROR)
+
+        self._send_json({"ok": True, "deleted": deleted, "id": deleted[0] if len(deleted) == 1 else None})
 
     def _serve_asset(self, raw_path: str) -> None:
         rel_path = unquote(raw_path).lstrip("/\\")

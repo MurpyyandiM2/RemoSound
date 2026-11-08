@@ -310,3 +310,32 @@ def test_delete_sound_returns_false_for_unknown_id(tmp_path):
     storage = StorageManager(root)
     assert storage.delete_sound("nonexistent") is False
 
+
+def test_delete_sounds_removes_multiple_files_and_manifest_entries(tmp_path):
+    root = tmp_path / "downloads"
+    storage = StorageManager(root)
+    sfx_dir = storage.category_dir("sfx")
+    f1 = sfx_dir / "s1.mp3"
+    f2 = sfx_dir / "s2.mp3"
+    f1.write_bytes(b"audio1")
+    f2.write_bytes(b"audio2")
+
+    storage.record_download("s1", "Sound 1", "sfx", "sfx/s1.mp3", [])
+    storage.record_download("s2", "Sound 2", "sfx", "sfx/s2.mp3", [])
+    storage.record_download("s3", "Sound 3", "sfx", "sfx/s3.mp3", [])
+    storage.save()
+
+    deleted = storage.delete_sounds(["s1", "s2", "nonexistent"])
+    assert deleted == ["s1", "s2"]
+    assert not f1.exists()
+    assert not f2.exists()
+    assert storage.is_downloaded("s1") is False
+    assert storage.is_downloaded("s2") is False
+    assert storage.is_downloaded("s3") is True
+
+    reloaded = StorageManager(root)
+    assert reloaded.is_downloaded("s1") is False
+    assert reloaded.is_downloaded("s2") is False
+    assert reloaded.is_downloaded("s3") is True
+
+

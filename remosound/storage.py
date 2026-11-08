@@ -125,25 +125,36 @@ class StorageManager:
         }
 
     def delete_sound(self, instant_id: str) -> bool:
-        """Remove a sound from the bank and manifest, saving the manifest.
+        """Remove a single sound from the bank and manifest, saving the manifest.
 
         Returns ``True`` if the sound was found and removed, ``False`` if not found.
         """
 
-        if instant_id not in self.manifest:
-            return False
+        deleted = self.delete_sounds([instant_id])
+        return bool(deleted)
 
-        entry = self.manifest.pop(instant_id)
-        rel_path = entry.get("path")
-        if rel_path:
-            sound_file = (self.root / rel_path).resolve()
-            # Ensure path is inside root before unlinking
-            root_resolved = self.root.resolve()
-            if sound_file == root_resolved or root_resolved in sound_file.parents:
-                sound_file.unlink(missing_ok=True)
+    def delete_sounds(self, instant_ids: list[str]) -> list[str]:
+        """Remove multiple sounds from the bank and manifest, saving the manifest once.
 
-        self.save()
-        return True
+        Returns the list of sound IDs that were successfully removed.
+        """
+
+        deleted: list[str] = []
+        root_resolved = self.root.resolve()
+        for instant_id in instant_ids:
+            if instant_id not in self.manifest:
+                continue
+            entry = self.manifest.pop(instant_id)
+            rel_path = entry.get("path")
+            if rel_path:
+                sound_file = (self.root / rel_path).resolve()
+                if sound_file == root_resolved or root_resolved in sound_file.parents:
+                    sound_file.unlink(missing_ok=True)
+            deleted.append(instant_id)
+
+        if deleted:
+            self.save()
+        return deleted
 
     def category_dir(self, category: str) -> Path:
         """Return the category directory, creating it if needed.

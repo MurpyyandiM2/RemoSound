@@ -349,6 +349,23 @@ def test_delete_endpoint_removes_sound(studio):
     assert not reloaded.is_downloaded("boom-1")
 
 
+def test_delete_endpoint_supports_bulk_ids(studio):
+    base, bank = studio
+    storage = StorageManager(bank)
+    assert storage.is_downloaded("boom-1")
+    assert storage.is_downloaded("pop-1")
+
+    status, payload = post(base + "/api/delete", {"ids": ["boom-1", "pop-1"]})
+    assert status == 200
+    assert payload["ok"] is True
+    assert set(payload["deleted"]) == {"boom-1", "pop-1"}
+
+    reloaded = StorageManager(bank)
+    assert not reloaded.is_downloaded("boom-1")
+    assert not reloaded.is_downloaded("pop-1")
+
+
+
 def test_delete_endpoint_reports_missing_sound(studio):
     base, _bank = studio
     status, payload = post(base + "/api/delete", {"id": "nonexistent-id"})
