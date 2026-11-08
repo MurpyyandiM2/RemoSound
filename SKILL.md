@@ -30,13 +30,18 @@ Use this skill when a task needs any of the following:
 
 Do not use it to edit or re-encode audio. It downloads only through providers:
 Mixkit, or a plugin in `~/.remosound/providers` (or `$REMOSOUND_PLUGINS`). To
-add a source, write a plugin from `contrib/providers/myinstants.py`; do not
+add a source, write a plugin that exposes `PROVIDER` (see `remosound/providers.py`); do not
 scrape inline. Tell the user that content from a plugin source may be
 copyrighted and that they must check the rights before using it.
 
 ## Environment
 
 - Windows host with spaces in paths — quote every path.
+- **Where RemoSound lives.** Run every command from the folder that contains
+  this `SKILL.md` (usually `~/.claude/skills/remosound`) with that folder's
+  `.venv`. Never change into the Remotion project to run it: pass the project
+  with `--project <path to the Remotion project>`, so sounds land in its
+  `public/remosound/`.
 - Use the virtualenv interpreter, never a global Python:
 
   ```bat
@@ -46,8 +51,6 @@ copyrighted and that they must check the rights before using it.
 - On Windows PowerShell or environments with quoting hooks, prefix shell
   commands with `cmd /c "..."` and join commands with `&`, never `&&`:
 
-  ```bat
-  ```
 
 ## Canonical commands
 
