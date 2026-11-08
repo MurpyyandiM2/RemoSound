@@ -29,6 +29,7 @@ Do not re-implement scraping inline; call `run.py`.
 
 ```bat
 .venv\Scripts\python.exe run.py
+.venv\Scripts\python.exe run.py --web
 .venv\Scripts\python.exe run.py --trending --limit 20
 .venv\Scripts\python.exe run.py --category memes --limit 20
 .venv\Scripts\python.exe run.py --search "boom" --limit 20
@@ -39,12 +40,14 @@ Do not re-implement scraping inline; call `run.py`.
 .venv\Scripts\python.exe -m pytest -q
 ```
 
-`run.py` with no flags opens the interactive menu; the mode flags
-(`--trending`, `--category`, `--search`, `--match`, `--rebuild-index`) are
-mutually exclusive.
+`run.py` with no flags opens the interactive menu (Trending / Category /
+Search / Match / Rebuild index / Web studio); the mode flags (`--trending`,
+`--category`, `--search`, `--match`, `--rebuild-index`, `--web`) are mutually
+exclusive.
 
 | Flag | Meaning |
 | --- | --- |
+| `--web` | Serve the local web studio on `127.0.0.1:5000-5009` and open it |
 | `--limit N` | Sounds to collect; default 100, capped at 5000 per run |
 | `--out DIR` | Bank root, default `downloads` |
 | `--dry-run` | Print the plan; write nothing |
@@ -56,8 +59,10 @@ codes: `0` success, `1` runtime failure, `2` usage error.
 
 ## Module map
 
-`scraper` → `downloader` → `storage` → `matcher` → `remotion_adapter` → `cli`.
-Lower layers never import `cli`; nothing but `run.py` touches `sys.argv`.
+`scraper` → `downloader` → `storage` → `matcher` → `remotion_adapter` → `cli`
+and `web`. `web.py` serves the studio and streams audio by manifest id; its UI
+is `web/index.html`. Lower layers never import `cli` or `web`; neither imports
+the other; nothing but `run.py` touches `sys.argv`.
 
 ## Hard rules
 
@@ -68,6 +73,8 @@ Lower layers never import `cli`; nothing but `run.py` touches `sys.argv`.
 - Never re-download anything already in `downloads/manifest.json`; partial
   files use `.part` and are removed on failure.
 - Sanitize every filename for Windows and never produce an empty stem.
+- The web studio is stdlib-only, binds `127.0.0.1`, and serves audio only at
+  `/api/audio?id=<instant-id>` after a bank-root containment check.
 - `downloads/`, `sound-bank.json`, and `sound-bank.ts` are runtime data, not
   source — never commit or hand-edit them.
 - Audio is community-uploaded MyInstants content; verify rights before

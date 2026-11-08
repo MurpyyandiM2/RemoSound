@@ -553,3 +553,106 @@ async def test_dry_run_survives_interactive_menu_dispatch(tmp_path, monkeypatch,
     assert "Dry run" in output
     assert seen["limit"] == 7
     assert not bank.exists()
+
+
+# --- web studio dispatch ---------------------------------------------------
+
+
+def test_parser_exposes_the_web_studio_flag():
+    args = build_parser().parse_args(["--web"])
+
+    assert args.web is True
+
+
+def test_web_is_mutually_exclusive_with_a_batch_mode():
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(["--web", "--trending"])
+
+
+async def test_web_flag_serves_the_studio_and_forwards_the_bank_root(tmp_path, monkeypatch):
+    seen = {}
+
+    def fake_serve(out, **kwargs):
+        seen["out"] = out
+        seen["console"] = kwargs.get("console")
+
+    monkeypatch.setattr(cli_module, "serve_web", fake_serve)
+    bank = tmp_path / "bank"
+
+    code = await main_async(["--web", "--out", str(bank)])
+
+    assert code == 0
+    assert seen["out"] == bank
+    assert seen["console"] is not None
+
+
+async def test_a_port_that_never_opens_exits_one_with_a_message(tmp_path, monkeypatch, capsys):
+    def refuse(out, **kwargs):
+        raise OSError("no free port")
+
+    monkeypatch.setattr(cli_module, "serve_web", refuse)
+
+    code = await main_async(["--web", "--out", str(tmp_path / "bank")])
+
+    assert code == 1
+    assert "no free port" in capsys.readouterr().err
+
+
+# --- category menu ---------------------------------------------------------
+
+
+def test_category_numbers_map_to_the_real_myinstants_slugs(monkeypatch):
+    monkeypatch.setattr(cli_module.Prompt, "ask", lambda *args, **kwargs: "2")
+
+    slug = cli_module._ask_category(cli_module.Console())
+
+    assert slug == cli_module.CATEGORIES[1][1]
+
+
+def test_the_category_table_shows_each_real_category(capsys, monkeypatch):
+    monkeypatch.setattr(cli_module.Prompt, "ask", lambda *args, **kwargs: "1")
+    monkeypatch.setenv("COLUMNS", "400")
+
+    cli_module._ask_category(cli_module.Console())
+
+    output = capsys.readouterr().out
+    assert len(cli_module.CATEGORIES) == 14
+    for label, _slug in cli_module.CATEGORIES:
+        assert label in output
+    slugs = {slug for _label, slug in cli_module.CATEGORIES}
+    assert {"sound effects", "anime & manga", "whatsapp audios"} <= slugs
+
+
+# --- summary ---------------------------------------------------------------
+
+
+async def test_the_summary_names_the_bank_and_the_next_commands(tmp_path, monkeypatch, capsys):
+    patch_crawl(monkeypatch, "crawl_trending", [make_button()])
+    monkeypatch.setattr(cli_module, "BulkDownloader", FakeDownloader)
+    # A wide console keeps the path on one line; rich reads COLUMNS when it is
+    # not writing to a terminal.
+    monkeypatch.setenv("COLUMNS", "400")
+    bank = tmp_path / "downloads"
+
+    code = await main_async(["--trending", "--limit", "1", "--out", str(bank)])
+
+    output = capsys.readouterr().out
+    assert code == 0
+    assert str(bank.resolve()) in output
+    assert "Vine Boom" in output
+    assert "--match" in output
+    assert "--web" in output
+    assert "--rebuild-index" in output
+
+
+async def test_a_custom_bank_root_is_carried_into_the_next_commands(tmp_path, monkeypatch, capsys):
+    patch_crawl(monkeypatch, "crawl_trending", [make_button()])
+    monkeypatch.setattr(cli_module, "BulkDownloader", FakeDownloader)
+    monkeypatch.setenv("COLUMNS", "400")
+    bank = tmp_path / "custom-bank"
+
+    await main_async(["--trending", "--limit", "1", "--out", str(bank)])
+
+    output = capsys.readouterr().out
+    assert f'--out "{bank}"' in output
+

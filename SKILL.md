@@ -20,14 +20,15 @@ Use this skill when a task needs any of the following:
 
 - bulk-download sound effects (trending, one category, or a search term) into a
   reusable local bank;
+- browse, preview, or start a download from the local web studio (`--web`);
 - pick a sound effect for a described video moment ("explosion in the
   distance", "something pops in", "the fail buzzer");
 - wire bank audio into a Remotion composition through `staticFile(...)`;
 - rebuild `sound-bank.json` / `sound-bank.ts` after the bank changed;
 - stage the bank into a Remotion project's `public/` directory.
 
-Do not use it to edit or re-encode audio, to fetch anything from a host other
-than MyInstants, or to build a UI.
+Do not use it to edit or re-encode audio, or to fetch anything from a host
+other than MyInstants.
 
 ## Environment
 
@@ -48,11 +49,12 @@ than MyInstants, or to build a UI.
 ## Canonical commands
 
 `run.py` with no mode flag opens an interactive menu (Trending / Category /
-Search / Match). Modes are mutually exclusive.
+Search / Match / Rebuild index / Web studio). Modes are mutually exclusive.
 
 | Command | What it does |
 | --- | --- |
 | `.venv\Scripts\python.exe run.py` | Interactive menu |
+| `run.py --web` | Serve the local web studio (soundboard, downloader, Remotion matcher) |
 | `run.py --trending [--limit N]` | Download the trending listing |
 | `run.py --category <name> [--limit N]` | Download one category |
 | `run.py --search "<query>" [--limit N]` | Download search results |
@@ -68,6 +70,7 @@ Concrete spellings:
 
 ```bat
 .venv\Scripts\python.exe run.py
+.venv\Scripts\python.exe run.py --web
 .venv\Scripts\python.exe run.py --trending --limit 20
 .venv\Scripts\python.exe run.py --category memes --limit 20
 .venv\Scripts\python.exe run.py --search "boom" --limit 20

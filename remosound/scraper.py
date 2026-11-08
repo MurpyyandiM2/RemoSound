@@ -28,6 +28,25 @@ TRENDING_URL = f"{BASE_URL}/en/index/us/"
 CATEGORY_URL = f"{BASE_URL}/en/categories/{{category}}/"
 SEARCH_URL = f"{BASE_URL}/en/search/?name={{query}}"
 
+# The categories the site publishes, as (display name, listing slug). The slug
+# is what /en/categories/<slug>/ expects; display names are for humans.
+CATEGORIES: tuple[tuple[str, str], ...] = (
+    ("Sound Effects", "sound effects"),
+    ("Memes", "memes"),
+    ("Music", "music"),
+    ("Games", "games"),
+    ("Anime & Manga", "anime & manga"),
+    ("Movies", "movies"),
+    ("Television", "television"),
+    ("Pranks", "pranks"),
+    ("Reactions", "reactions"),
+    ("TikTok Trends", "tiktok trends"),
+    ("Viral", "viral"),
+    ("Sports", "sports"),
+    ("Politics", "politics"),
+    ("WhatsApp Audios", "whatsapp audios"),
+)
+
 USER_AGENT = "RemoSound/0.1 (polite sound-bank downloader; +https://www.myinstants.com)"
 
 REQUEST_TIMEOUT = 20.0

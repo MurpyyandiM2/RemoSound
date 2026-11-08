@@ -30,7 +30,15 @@ from pathlib import Path
 import httpx
 from rich.console import Console
 from rich.markup import escape
-from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn
+from rich.panel import Panel
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    TaskProgressColumn,
+    TextColumn,
+    TimeRemainingColumn,
+)
 from rich.prompt import Prompt
 from rich.table import Table
 
@@ -43,14 +51,18 @@ from remosound.remotion_adapter import (
     export_typescript_helper,
     stage_into_remotion,
 )
-from remosound.scraper import InstantButton, MyInstantsScraper
+from remosound.scraper import CATEGORIES, InstantButton, MyInstantsScraper
 from remosound.storage import StorageManager
+from remosound.web import serve as serve_web
 
 DEFAULT_OUT = "downloads"
 DEFAULT_LIMIT = 100
 MAX_LIMIT = 5000
 DEFAULT_CONCURRENCY = 5
 MATCH_LIMIT = 5
+
+SAMPLE_SIZE = 5
+PROGRESS_TITLE_WIDTH = 42
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -79,6 +91,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--rebuild-index",
         action="store_true",
         help="rebuild sound-bank.json and sound-bank.ts beside the bank root",
+    )
+    mode.add_argument(
+        "--web",
+        action="store_true",
+        help="open the local RemoSound web studio (soundboard, downloader, Remotion matcher)",
     )
 
     parser.add_argument(
@@ -137,7 +154,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 async def interactive_menu(args: argparse.Namespace, console: Console) -> int:
-    """Ask for one of four operations, then run it on the parsed flags.
+    """Ask for one operation, then run it on the parsed flags.
 
     ``args`` carries the options the user already supplied (``--dry-run``,
     ``--out``, ``--limit``, ``--max-concurrency``); the menu only fills in the
@@ -152,17 +169,25 @@ async def interactive_menu(args: argparse.Namespace, console: Console) -> int:
     menu.add_row("2", "Browse a category")
     menu.add_row("3", "Search")
     menu.add_row("4", "Match scene text")
+    menu.add_row("5", "Rebuild the Remotion index")
+    menu.add_row("6", "Open the web studio")
     console.print(menu)
 
-    choice = Prompt.ask("Choose", choices=["1", "2", "3", "4"], default="1", console=console)
+    choice = Prompt.ask(
+        "Choose", choices=["1", "2", "3", "4", "5", "6"], default="1", console=console
+    )
     if choice == "1":
         mode = {"trending": True}
     elif choice == "2":
-        mode = {"category": _ask("Category", console)}
+        mode = {"category": _ask_category(console)}
     elif choice == "3":
         mode = {"search": _ask("Query", console)}
-    else:
+    elif choice == "4":
         mode = {"match": _ask("Scene text", console)}
+    elif choice == "5":
+        mode = {"rebuild_index": True}
+    else:
+        mode = {"web": True}
 
     selected = argparse.Namespace(**vars(args))
     for field, value in mode.items():
@@ -170,9 +195,38 @@ async def interactive_menu(args: argparse.Namespace, console: Console) -> int:
     return await _dispatch(selected, console)
 
 
+def _ask_category(console: Console) -> str:
+    """Show the real MyInstants categories and return the chosen slug.
+
+    Picking a number is the common path; ``0`` keeps free-text available for a
+    slug the site adds after this table was written.
+    """
+
+    table = Table(title="MyInstants categories", show_header=False, box=None, pad_edge=False)
+    for _ in range(4):
+        table.add_column()
+    entries = [(str(index), label) for index, (label, _slug) in enumerate(CATEGORIES, start=1)]
+    half = (len(entries) + 1) // 2
+    for offset in range(half):
+        row: list[str] = []
+        for entry in (entries[offset], entries[offset + half] if offset + half < len(entries) else None):
+            row.extend(entry if entry is not None else ("", ""))
+        table.add_row(*row)
+    table.add_row("0", "Type a category name or slug")
+    console.print(table)
+
+    choices = [entry[0] for entry in entries] + ["0"]
+    choice = Prompt.ask("Category", choices=choices, default="1", console=console)
+    if choice == "0":
+        return _ask("Category name or slug", console)
+    return CATEGORIES[int(choice) - 1][1]
+
+
 async def _dispatch(args: argparse.Namespace, console: Console) -> int:
     """Run the operation named by ``args``."""
 
+    if args.web:
+        return _run_web(args, console)
     if args.match is not None:
         return _run_match(args, console)
     if args.rebuild_index:
@@ -180,6 +234,17 @@ async def _dispatch(args: argparse.Namespace, console: Console) -> int:
     if args.trending or args.category is not None or args.search is not None:
         return await _run_batch(args, console)
     return await interactive_menu(args, console)
+
+
+def _run_web(args: argparse.Namespace, console: Console) -> int:
+    """Serve the local web studio until the user stops it."""
+
+    try:
+        serve_web(args.out, console=console)
+    except OSError as error:
+        _error(f"Could not start the web studio: {error}")
+        return 1
+    return 0
 
 
 # --- match -----------------------------------------------------------------
@@ -269,7 +334,7 @@ async def _run_batch(args: argparse.Namespace, console: Console) -> int:
     # only the manifest tells them apart.
     failed = [button for button in pending if not storage.is_downloaded(button.id)]
     downloaded = len(pending) - len(failed)
-    _print_summary(downloaded, skipped, failed, console)
+    _print_summary(downloaded, skipped, failed, console, pending, storage, args)
 
     if args.remotion_public is not None:
         if failed:
@@ -308,19 +373,36 @@ async def _download(
     downloader = BulkDownloader(storage, max_concurrency=args.max_concurrency)
     columns = (
         TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
+        BarColumn(bar_width=None),
         MofNCompleteColumn(),
+        TaskProgressColumn(),
+        TimeRemainingColumn(),
+        TextColumn("{task.fields[current]}", style="dim"),
     )
     try:
         with Progress(*columns, console=console) as progress:
-            task = progress.add_task("Downloading", total=len(pending))
+            task = progress.add_task("Downloading", total=len(pending), current="")
 
             def on_progress(completed: int, total: int, _title: str) -> None:
-                progress.update(task, completed=completed, total=total)
+                progress.update(
+                    task,
+                    completed=completed,
+                    total=total,
+                    current=_fit_title(_title),
+                )
 
             await downloader.download_batch(pending, on_progress=on_progress)
     finally:
         await downloader.close()
+
+
+def _fit_title(title: str, width: int = PROGRESS_TITLE_WIDTH) -> str:
+    """Trim a remote title to one short, single-line progress field."""
+
+    text = " ".join((title or "").split())
+    if len(text) <= width:
+        return text
+    return text[: width - 1].rstrip() + "…"
 
 
 def _print_plan(
@@ -359,16 +441,31 @@ def _print_summary(
     skipped: list[InstantButton],
     failed: list[InstantButton],
     console: Console,
+    pending: list[InstantButton],
+    storage: StorageManager,
+    args: argparse.Namespace,
 ) -> None:
-    """Print the batch totals and, when needed, the failed ids."""
+    """Print totals, the bank location, a sample of new files, and next steps."""
 
-    summary = Table(title="Results", show_header=False)
-    summary.add_column("Outcome")
-    summary.add_column("Count", justify="right")
+    summary = Table(show_header=False, box=None)
+    summary.add_column("Outcome", style="bold")
+    summary.add_column("Value", justify="right")
     summary.add_row("Downloaded", str(downloaded))
     summary.add_row("Already in the bank", str(len(skipped)))
     summary.add_row("Failed", str(len(failed)))
-    console.print(summary)
+    summary.add_row("Bank", escape(str(Path(storage.root).resolve())))
+    console.print(Panel(summary, title="Download summary", border_style="green"))
+
+    fresh = _fresh_entries(pending, storage)
+    if fresh:
+        sample = Table(title="New this run")
+        sample.add_column("Title")
+        sample.add_column("File", style="dim")
+        for title, relative_path in fresh[:SAMPLE_SIZE]:
+            sample.add_row(escape(title), escape(relative_path))
+        console.print(sample)
+        if len(fresh) > SAMPLE_SIZE:
+            console.print(f"[dim]…and {len(fresh) - SAMPLE_SIZE} more.[/dim]")
 
     if failed:
         failures = Table(title="Failed downloads")
@@ -377,6 +474,38 @@ def _print_summary(
         for button in failed:
             failures.add_row(escape(button.id), escape(button.title or button.id))
         console.print(failures)
+
+    out_flag = f' --out "{args.out}"' if str(args.out) != DEFAULT_OUT else ""
+    hints = (
+        f'[bold]Match a scene[/bold]   python run.py --match "boom"{escape(out_flag)}\n'
+        f"[bold]Open the studio[/bold] python run.py --web{escape(out_flag)}\n"
+        f"[bold]Rebuild index[/bold]   python run.py --rebuild-index{escape(out_flag)}"
+    )
+    console.print(Panel(hints, title="Next steps", border_style="cyan"))
+
+
+def _fresh_entries(
+    pending: list[InstantButton], storage: StorageManager
+) -> list[tuple[str, str]]:
+    """The manifest records written by this run, in pending order.
+
+    A button is in ``pending`` because it was missing from the manifest, so an
+    entry that exists now means the file landed — adopting an interrupted
+    download counts too, because the user still gained a usable file.
+    """
+
+    fresh: list[tuple[str, str]] = []
+    for button in pending:
+        entry = storage.manifest.get(button.id)
+        if entry is None:
+            continue
+        fresh.append(
+            (
+                str(entry.get("title") or button.title or button.id),
+                str(entry.get("path") or ""),
+            )
+        )
+    return fresh
 
 
 # --- shared helpers --------------------------------------------------------

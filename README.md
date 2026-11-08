@@ -31,6 +31,7 @@ entrypoint — there are no separate scripts to remember.
 
 ```bat
 .venv\Scripts\python.exe run.py
+.venv\Scripts\python.exe run.py --web
 .venv\Scripts\python.exe run.py --trending --limit 20
 .venv\Scripts\python.exe run.py --category memes --limit 20
 .venv\Scripts\python.exe run.py --search "boom" --limit 20
@@ -42,7 +43,8 @@ entrypoint — there are no separate scripts to remember.
 
 | Command | What it does |
 | --- | --- |
-| `run.py` | Interactive menu |
+| `run.py` | Interactive menu: trending, category, search, match, rebuild index, web studio |
+| `--web` | Open the local web studio (soundboard, downloader, Remotion matcher) |
 | `--trending --limit N` | Grab what's trending right now |
 | `--category <name> --limit N` | Grab one category |
 | `--search "<query>" --limit N` | Grab search results |
@@ -54,8 +56,8 @@ entrypoint — there are no separate scripts to remember.
 | `--max-concurrency N` | Parallel downloads (default 5; values above 5 are capped at 5) |
 
 The mode flags (`--trending`, `--category`, `--search`, `--match`,
-`--rebuild-index`) are mutually exclusive. `--limit` defaults to 100 and is
-capped at 5000 per run. `--remotion-public` needs a batch command or
+`--rebuild-index`, `--web`) are mutually exclusive. `--limit` defaults to 100
+and is capped at 5000 per run. `--remotion-public` needs a batch command or
 `--rebuild-index`. Exit codes: `0` success, `1` runtime failure, `2` usage
 error.
 
@@ -70,6 +72,55 @@ Tests:
 ```bat
 .venv\Scripts\python.exe -m pytest -q
 ```
+
+## Web studio
+
+`run.py --web` serves a local single-page studio at `http://127.0.0.1:5000/`
+(the next free port in `5000-5009` if that one is taken) and opens the browser.
+It is Python's standard library only — no Node, no npm, no build step, no extra
+dependency.
+
+- **Soundboard** — every sound in the bank with search, category filters, and a
+  persistent player. Audio streams from the manifest id with HTTP Range support,
+  so a skip or a seek does not re-download the file.
+- **Downloader** — pick trending or one of the 14 real MyInstants categories,
+  choose an amount, and watch a live progress panel. The job runs through the
+  same scraper, downloader, ethics limits, and manifest dedupe as the CLI.
+- **Remotion studio** — describe a scene in Indonesian or English, get the
+  top 8 ranked cues, preview each one, and copy a ready
+  `<Audio src={staticFile(...)} />` line.
+
+The server binds `127.0.0.1` only and stops on Ctrl+C. `--out` selects the bank
+it reads and writes, exactly like the CLI:
+
+```bat
+.venv\Scripts\python.exe run.py --web --out .\downloads
+```
+
+## Categories
+
+`--category` accepts the display name or the slug shown in the menu, matching
+what MyInstants publishes:
+
+| Display name | Slug |
+| --- | --- |
+| Anime & Manga | `anime & manga` |
+| Games | `games` |
+| Memes | `memes` |
+| Movies | `movies` |
+| Music | `music` |
+| Politics | `politics` |
+| Pranks | `pranks` |
+| Reactions | `reactions` |
+| Sound Effects | `sound effects` |
+| Sports | `sports` |
+| Television | `television` |
+| TikTok Trends | `tiktok trends` |
+| Viral | `viral` |
+| WhatsApp Audios | `whatsapp audios` |
+
+The menu shows these as numbered choices; `0` still lets you type a slug the
+site adds later.
 
 ## Supported harnesses
 

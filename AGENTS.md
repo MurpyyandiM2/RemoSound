@@ -47,6 +47,7 @@ Do not re-implement scraping inline; call `run.py`.
 
 ```bat
 .venv\Scripts\python.exe run.py
+.venv\Scripts\python.exe run.py --web
 .venv\Scripts\python.exe run.py --trending --limit 20
 .venv\Scripts\python.exe run.py --category memes --limit 20
 .venv\Scripts\python.exe run.py --search "boom" --limit 20
@@ -57,12 +58,14 @@ Do not re-implement scraping inline; call `run.py`.
 .venv\Scripts\python.exe -m pytest -q
 ```
 
-`run.py` with no flags opens the interactive menu; the mode flags
-(`--trending`, `--category`, `--search`, `--match`, `--rebuild-index`) are
-mutually exclusive.
+`run.py` with no flags opens the interactive menu (Trending / Category /
+Search / Match / Rebuild index / Web studio); the mode flags (`--trending`,
+`--category`, `--search`, `--match`, `--rebuild-index`, `--web`) are mutually
+exclusive.
 
 | Flag | Meaning |
 | --- | --- |
+| `--web` | Serve the local web studio on `127.0.0.1:5000-5009` and open it |
 | `--limit N` | Sounds to collect; default 100, capped at 5000 per run |
 | `--out DIR` | Bank root, default `downloads` |
 | `--dry-run` | Print the plan; write nothing |
@@ -80,6 +83,8 @@ Data flows one direction; keep it that way.
 run.py            entrypoint, argument parsing, wiring
 remosound/
   cli.py          menus, flags, rich output
+  web.py          local HTTP studio: jobs, JSON API, Range audio streaming
+  web/index.html  the entire single-page studio (CSS + JS inline)
   scraper.py      MyInstants pages -> sound records (rate limited)
   downloader.py   sound records -> files under downloads/ (bounded concurrency)
   storage.py      downloads/manifest.json (dedupe record)
@@ -87,8 +92,25 @@ remosound/
   remotion_adapter.py  staticFile()-ready paths for Remotion projects
 ```
 
-`scraper` → `downloader` → `storage` → `matcher` → `remotion_adapter` → `cli`.
-Lower layers never import `cli`; nothing but `run.py` touches `sys.argv`.
+`scraper` → `downloader` → `storage` → `matcher` → `remotion_adapter` → `cli`
+and `web`. Lower layers never import `cli` or `web`; neither `cli` nor `web`
+imports the other, and nothing but `run.py` touches `sys.argv`.
+
+## Web studio
+
+`--web` is a second surface over the same layers, not a second pipeline. It
+must keep these invariants:
+
+- stdlib only (`http.server`, `ThreadingHTTPServer`) — no Node, npm, or build
+  step; adding a dependency for the UI is a regression.
+- binds `127.0.0.1` only; audio exists solely at `/api/audio?id=<instant-id>`,
+  never at a filesystem path, and the id resolves through the manifest with a
+  bank-root containment check.
+- downloads go through `BulkDownloader` and the same ethics limits; each job
+  runs on a daemon thread with its own event loop and its own
+  `StorageManager`.
+- the UI lives in `remosound/web/index.html`; every user-supplied string from
+  the API must be HTML-escaped before it reaches `innerHTML`.
 
 ## Download ethics (hard limits)
 
