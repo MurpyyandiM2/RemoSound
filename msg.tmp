@@ -1,8 +1,0 @@
-feat: add bulk selection delete and direct individual delete
-
-- Support single delete without prior selection via trash icon on each card
-- Add Select All checkbox and individual card checkboxes for multi-select
-- Show dynamic 'Delete Selected (N)' and 'Deselect' buttons when items are chosen
-- Require pop-up modal confirmation for both single and bulk deletion
-- Implement atomic delete_sounds in StorageManager and bulk ids in /api/delete
-- Add tests for batch deletion and API bulk removal (237 tests pass)
