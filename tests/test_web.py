@@ -217,6 +217,8 @@ def test_index_is_served_as_html(studio):
     assert status == 200
     assert headers["Content-Type"].startswith("text/html")
     assert b"RemoSound" in body
+    assert b"/assets/icon.png" in body
+    assert b"/assets/logo.png" in body
 
 
 def test_bank_endpoint_matches_the_manifest(studio):
@@ -391,4 +393,15 @@ def test_asset_serving_returns_logo(studio):
     assert status2 == 200
     assert headers2["Content-Type"] == "image/png"
     assert len(body2) > 0
+
+    status3, headers3, body3 = get(base + "/assets/icon.png")
+    assert status3 == 200
+    assert headers3["Content-Type"] == "image/png"
+    assert len(body3) > 0
+
+    status4, headers4, body4 = get(base + "/assets/Ikon%20aplikasi.png")
+    assert status4 == 200
+    assert headers4["Content-Type"] == "image/png"
+    assert len(body4) > 0
+
 

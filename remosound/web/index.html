@@ -116,9 +116,31 @@
   /* --- shell ------------------------------------------------------------ */
   main { max-width: 1180px; margin: 0 auto; padding: 34px 28px 150px; }
 
-  .hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 28px; flex-wrap: wrap; }
-  .hero-logo-wrap { margin-bottom: 14px; }
-  .hero-logo { height: 48px; width: auto; object-fit: contain; filter: drop-shadow(0 4px 16px rgba(34, 197, 94, .2)); }
+  .hero {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 20px 28px;
+    flex-wrap: wrap;
+  }
+  .hero-logo-wrap {
+    flex: 0 0 100%;
+    width: 100%;
+    margin-bottom: 6px;
+  }
+  .hero-logo {
+    display: block;
+    width: 100%;
+    max-width: 680px;
+    height: auto;
+    max-height: 250px;
+    object-fit: contain;
+    object-position: left center;
+    filter: drop-shadow(0 10px 32px rgba(34, 197, 94, .28));
+  }
+  .hero-intro {
+    flex: 1 1 540px;
+  }
   .hero h1 {
     margin: 0 0 8px;
     font-size: clamp(26px, 3.6vw, 38px);
@@ -752,7 +774,7 @@
 <div class="app">
   <header class="topbar">
     <a class="brand" href="/">
-      <img src="/assets/logo.png" alt="RemoSound" class="brand-logo-img" onerror="this.src='/assets/Logo%20utama.png'">
+      <img src="/assets/icon.png" alt="RemoSound" class="brand-logo-img" onerror="this.src='/assets/Ikon%20aplikasi.png'">
       <span>
         <span class="brand-name">RemoSound</span><br>
         <span class="brand-sub">Local sound bank & Remotion AI studio</span>
@@ -766,10 +788,10 @@
 
   <main>
     <section class="hero">
-      <div>
-        <div class="hero-logo-wrap">
-          <img src="/assets/logo.png" alt="RemoSound" class="hero-logo" onerror="this.src='/assets/Logo%20utama.png'">
-        </div>
+      <div class="hero-logo-wrap">
+        <img src="/assets/logo.png" alt="RemoSound" class="hero-logo" onerror="this.src='/assets/Logo%20utama.png'">
+      </div>
+      <div class="hero-intro">
         <h1>Your sound bank, <em>ready to score.</em></h1>
         <p>Browse and preview every downloaded cue, pull new sounds from MyInstants or Mixkit (royalty-free), and turn a scene description into Remotion-ready audio.</p>
       </div>

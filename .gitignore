@@ -9,3 +9,4 @@ sound-bank.ts
 .superpowers/
 *.mp3.part
 docs/
+.codegraph/
