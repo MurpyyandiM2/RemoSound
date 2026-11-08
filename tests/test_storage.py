@@ -111,6 +111,7 @@ def test_manifest_round_trip(tmp_path):
             "category": "Sound Effects",
             "path": "sound-effects/boom.mp3",
             "tags": ["boom", "impact"],
+            "provider": "myinstants",
         }
     ]
     assert reloaded.manifest["abc123"]["title"] == "Boom"
@@ -224,6 +225,7 @@ def test_corrupt_manifest_starts_empty_and_can_be_rewritten(tmp_path):
             "category": "Cat",
             "path": "cat/boom.mp3",
             "tags": ["boom"],
+            "provider": "myinstants",
         }
     }
 
@@ -267,3 +269,44 @@ def test_entries_ignores_a_non_sequence_tags_value(tmp_path):
     }
 
     assert storage.entries()[0]["tags"] == []
+
+
+def test_record_download_stores_provider(tmp_path):
+    root = tmp_path / "downloads"
+    storage = StorageManager(root)
+    storage.record_download("mk1", "Whoosh", "Transition", "transition/whoosh.mp3", ["whoosh"], provider="mixkit")
+    storage.save()
+
+    reloaded = StorageManager(root)
+    entry = reloaded.manifest["mk1"]
+    assert entry["provider"] == "mixkit"
+    assert reloaded.entries()[0]["provider"] == "mixkit"
+
+
+def test_delete_sound_removes_file_and_manifest_entry(tmp_path):
+    root = tmp_path / "downloads"
+    storage = StorageManager(root)
+    sfx_dir = storage.category_dir("sfx")
+    audio_file = sfx_dir / "test.mp3"
+    audio_file.write_bytes(b"dummy audio")
+
+    storage.record_download("sound1", "Test", "sfx", "sfx/test.mp3", ["test"])
+    storage.save()
+    assert storage.is_downloaded("sound1") is True
+    assert audio_file.exists() is True
+
+    result = storage.delete_sound("sound1")
+    assert result is True
+    assert storage.is_downloaded("sound1") is False
+    assert audio_file.exists() is False
+
+    reloaded = StorageManager(root)
+    assert reloaded.is_downloaded("sound1") is False
+    assert "sound1" not in reloaded.manifest
+
+
+def test_delete_sound_returns_false_for_unknown_id(tmp_path):
+    root = tmp_path / "downloads"
+    storage = StorageManager(root)
+    assert storage.delete_sound("nonexistent") is False
+

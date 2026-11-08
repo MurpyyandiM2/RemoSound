@@ -14,7 +14,7 @@ import pytest
 
 from remosound import cli as cli_module
 from remosound.cli import build_parser, main, main_async
-from remosound.scraper import InstantButton, MyInstantsScraper
+from remosound.scraper import InstantButton, MixkitScraper, MyInstantsScraper
 from remosound.storage import StorageManager
 
 BASE_URL = "https://www.myinstants.com"
@@ -86,6 +86,7 @@ class FakeDownloader:
                     category=button.category,
                     relative_path=target.relative_to(self.storage.root).as_posix(),
                     tags=[],
+                    provider=getattr(button, "provider", "myinstants"),
                 )
                 written.append(target)
             if on_progress is not None:
@@ -607,6 +608,56 @@ def test_category_numbers_map_to_the_real_myinstants_slugs(monkeypatch):
     slug = cli_module._ask_category(cli_module.Console())
 
     assert slug == cli_module.CATEGORIES[1][1]
+
+
+def test_provider_flag_options():
+    parser = build_parser()
+    assert parser.parse_args(["--trending"]).provider == "myinstants"
+    assert parser.parse_args(["--trending", "--provider", "mixkit"]).provider == "mixkit"
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--trending", "--provider", "unknown"])
+
+
+async def test_batch_mixkit_provider(tmp_path, monkeypatch):
+    seen = {}
+
+    async def crawl(self, query, limit=100):
+        seen["called"] = True
+        seen["query"] = query
+        return [
+            InstantButton(
+                id="mixkit-1",
+                title="Whoosh",
+                audio_url="https://assets.mixkit.co/preview.mp3",
+                category="search",
+                page_url="https://mixkit.co/free-sound-effects/1/",
+                provider="mixkit",
+            )
+        ]
+
+    monkeypatch.setattr(MixkitScraper, "crawl_search", crawl)
+    monkeypatch.setattr(cli_module, "BulkDownloader", FakeDownloader)
+
+    code = await main_async(
+        ["--search", "whoosh", "--provider", "mixkit", "--limit", "1", "--out", str(tmp_path / "downloads")]
+    )
+
+    assert code == 0
+    assert seen.get("called") is True
+    assert seen.get("query") == "whoosh"
+    storage = StorageManager(tmp_path / "downloads")
+    assert storage.is_downloaded("mixkit-1")
+    assert storage.manifest["mixkit-1"]["provider"] == "mixkit"
+
+
+async def test_delete_flag_removes_sound(tmp_path):
+    bank = seed_bank(tmp_path, [("boom-1", "Vine Boom", "memes")])
+    assert StorageManager(bank).is_downloaded("boom-1")
+
+    code = await main_async(["--delete", "boom-1", "--out", str(bank)])
+    assert code == 0
+    assert not StorageManager(bank).is_downloaded("boom-1")
+
 
 
 def test_the_category_table_shows_each_real_category(capsys, monkeypatch):

@@ -1,10 +1,10 @@
 # Repository Guide: RemoSound
 
 RemoSound is a Python CLI that bulk-downloads sound effects from MyInstants
-into a local sound bank (`downloads/`) and exposes a contextual matcher for
-Remotion video projects. This file is the operating guide for every agent
-working in this repository — OpenCode, Claude Code, Cursor, Antigravity, or a
-human in a shell.
+and Mixkit (royalty-free) into a local sound bank (`downloads/`) and exposes a
+contextual matcher for Remotion video projects. This file is the operating
+guide for every agent working in this repository — OpenCode, Claude Code,
+Cursor, Antigravity, or a human in a shell.
 
 ## Environment
 
@@ -66,6 +66,11 @@ exclusive.
 | Flag | Meaning |
 | --- | --- |
 | `--web` | Serve the local web studio on `127.0.0.1:5000-5009` and open it |
+| `--trending` | Collect trending sounds |
+| `--category NAME` | Collect sounds from one category |
+| `--search QUERY` | Collect sounds matching search query |
+| `--provider P` | Audio provider: `myinstants` (default) or `mixkit` (royalty-free) |
+| `--delete ID` | Delete a sound from bank and manifest by ID |
 | `--limit N` | Sounds to collect; default 100, capped at 5000 per run |
 | `--out DIR` | Bank root, default `downloads` |
 | `--dry-run` | Print the plan; write nothing |
@@ -134,6 +139,7 @@ committed or edited by hand. Change the code that generates them instead.
 
 ## License and content rights
 
-Code is MIT (see `LICENSE`). The audio is community-uploaded MyInstants
-content: RemoSound only automates retrieval, and users are responsible for
-verifying rights before commercial use. Keep that disclaimer in `README.md`.
+Code is MIT (see `LICENSE`). Audio is community-uploaded MyInstants content
+or free royalty-free Mixkit content: RemoSound only automates retrieval, and
+users are responsible for verifying rights before commercial use. Keep that
+disclaimer in `README.md`.

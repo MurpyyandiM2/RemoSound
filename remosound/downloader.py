@@ -268,6 +268,7 @@ class BulkDownloader:
                 category=button.category,
                 relative_path=target.relative_to(self.storage.root).as_posix(),
                 tags=derive_tags(button.title),
+                provider=getattr(button, "provider", "myinstants"),
             )
             if persist:
                 self.storage.save()

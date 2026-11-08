@@ -33,7 +33,7 @@ import webbrowser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from rich.console import Console
 
@@ -41,7 +41,7 @@ from remosound import __version__
 from remosound.downloader import MAX_CONCURRENCY, BulkDownloader
 from remosound.matcher import ContextualSoundMatcher
 from remosound.remotion_adapter import REMOTION_PREFIX
-from remosound.scraper import CATEGORIES, InstantButton, MyInstantsScraper
+from remosound.scraper import CATEGORIES, MIXKIT_CATEGORIES, InstantButton, MixkitScraper, MyInstantsScraper
 from remosound.storage import StorageManager, category_slug
 
 HOST = "127.0.0.1"
@@ -55,6 +55,7 @@ JOB_HISTORY = 20
 CHUNK_SIZE = 64 * 1024
 
 WEB_DIR = Path(__file__).with_name("web")
+ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
 INDEX_NAME = "index.html"
 
 _RANGE = re.compile(r"bytes=(\d*)-(\d*)$")
@@ -66,7 +67,7 @@ _RANGE = re.compile(r"bytes=(\d*)-(\d*)$")
 class DownloadJob:
     """Thread-safe progress record for one background download."""
 
-    def __init__(self, mode: str, target: str, limit: int) -> None:
+    def __init__(self, mode: str, target: str, limit: int, provider: str = "myinstants") -> None:
         self.id = uuid.uuid4().hex[:12]
         self._lock = threading.Lock()
         self._data: dict = {
@@ -74,6 +75,7 @@ class DownloadJob:
             "mode": mode,
             "target": target,
             "limit": limit,
+            "provider": provider,
             "state": "queued",
             "found": 0,
             "total": 0,
@@ -118,17 +120,24 @@ class JobRegistry:
             return self._jobs.get(job_id)
 
 
-def start_download(registry: JobRegistry, mode: str, target: str, limit: int, out: Path) -> DownloadJob:
+def start_download(
+    registry: JobRegistry,
+    mode: str,
+    target: str,
+    limit: int,
+    out: Path,
+    provider: str = "myinstants",
+) -> DownloadJob:
     """Register a job and run it on a daemon thread.
 
     The caller gets its snapshot immediately; the browser polls
     ``/api/jobs/<id>`` for progress.
     """
 
-    job = registry.add(DownloadJob(mode=mode, target=target, limit=limit))
+    job = registry.add(DownloadJob(mode=mode, target=target, limit=limit, provider=provider))
     thread = threading.Thread(
         target=_run_job,
-        args=(job, mode, target, limit, Path(out)),
+        args=(job, mode, target, limit, Path(out), provider),
         name=f"remosound-{job.id}",
         daemon=True,
     )
@@ -136,21 +145,23 @@ def start_download(registry: JobRegistry, mode: str, target: str, limit: int, ou
     return job
 
 
-def _run_job(job: DownloadJob, mode: str, target: str, limit: int, out: Path) -> None:
+def _run_job(job: DownloadJob, mode: str, target: str, limit: int, out: Path, provider: str = "myinstants") -> None:
     """Own the job's event loop and turn every failure into job state."""
 
     job.update(state="running", started_at=time.time())
     try:
-        asyncio.run(_download_async(job, mode, target, limit, out))
+        asyncio.run(_download_async(job, mode, target, limit, out, provider))
     except Exception as error:  # noqa: BLE001 - surfaced to the browser
         job.update(state="error", error=str(error), finished_at=time.time())
 
 
-async def _download_async(job: DownloadJob, mode: str, target: str, limit: int, out: Path) -> None:
+async def _download_async(
+    job: DownloadJob, mode: str, target: str, limit: int, out: Path, provider: str = "myinstants"
+) -> None:
     """Scrape one listing, then download what the manifest does not already own."""
 
     storage = StorageManager(out)
-    scraper = MyInstantsScraper()
+    scraper = MixkitScraper() if provider == "mixkit" else MyInstantsScraper()
     try:
         buttons = await _collect(scraper, mode, target, limit)
     finally:
@@ -181,7 +192,7 @@ async def _download_async(job: DownloadJob, mode: str, target: str, limit: int, 
 
 
 async def _collect(
-    scraper: MyInstantsScraper, mode: str, target: str, limit: int
+    scraper: MyInstantsScraper | MixkitScraper, mode: str, target: str, limit: int
 ) -> list[InstantButton]:
     """Crawl the listing named by ``mode`` and ``target``."""
 
@@ -217,6 +228,20 @@ def bank_payload(storage: StorageManager) -> dict:
         "sounds": sounds,
         "categories": categories,
         "available": [{"name": label, "slug": slug} for label, slug in CATEGORIES],
+        "providers": [
+            {
+                "id": "myinstants",
+                "name": "MyInstants",
+                "badge": "Community",
+                "categories": [{"name": label, "slug": slug} for label, slug in CATEGORIES],
+            },
+            {
+                "id": "mixkit",
+                "name": "Mixkit",
+                "badge": "Royalty-Free",
+                "categories": [{"name": label, "slug": slug} for label, slug in MIXKIT_CATEGORIES],
+            },
+        ],
     }
 
 
@@ -236,12 +261,14 @@ def _sound_payload(entry: dict) -> dict:
     instant_id = str(entry.get("id") or "")
     title = str(entry.get("title") or instant_id)
     category = str(entry.get("category") or "uncategorized")
+    provider = str(entry.get("provider") or "myinstants")
     path = str(entry.get("path") or "").replace("\\", "/")
     file_name = PurePosixPath(path).name
     return {
         "id": instant_id,
         "title": title,
         "category": category,
+        "provider": provider,
         "path": path,
         "src": f"{REMOTION_PREFIX}/{category_slug(category)}/{file_name}",
         "url": "/api/audio?id=" + quote(instant_id, safe=""),
@@ -346,6 +373,8 @@ class _Handler(BaseHTTPRequestHandler):
                 self._serve_audio(parse_qs(route.query).get("id", [""])[0])
             elif route.path.startswith("/api/jobs/"):
                 self._serve_job(route.path.rsplit("/", 1)[-1])
+            elif route.path.startswith("/assets/"):
+                self._serve_asset(route.path[len("/assets/") :])
             elif route.path in ("/favicon.ico", "/favicon.svg"):
                 self._send_empty(HTTPStatus.NO_CONTENT)
             else:
@@ -362,6 +391,8 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             if route.path == "/api/download":
                 self._start_download(payload)
+            elif route.path == "/api/delete":
+                self._delete_sound(payload)
             elif route.path == "/api/match":
                 self._match(payload)
             else:
@@ -440,14 +471,53 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json({"error": "a category or search query is required"}, HTTPStatus.BAD_REQUEST)
             return
 
+        provider = str(payload.get("provider") or "myinstants").strip()
+        if provider not in ("myinstants", "mixkit"):
+            provider = "myinstants"
+
         job = start_download(
             self.server.jobs,
             mode=mode,
             target=target,
             limit=clamp_limit(payload.get("limit")),
             out=self.server.root,
+            provider=provider,
         )
         self._send_json({"job": job.snapshot()}, HTTPStatus.ACCEPTED)
+
+    def _delete_sound(self, payload: dict) -> None:
+        sound_id = str(payload.get("id") or "").strip()
+        if not sound_id:
+            self._send_json({"error": "sound id is required"}, HTTPStatus.BAD_REQUEST)
+            return
+        storage = self.server.storage()
+        if not storage.is_downloaded(sound_id):
+            self._send_json({"error": "sound not found in the bank"}, HTTPStatus.NOT_FOUND)
+            return
+        success = storage.delete_sound(sound_id)
+        if success:
+            self._send_json({"ok": True, "id": sound_id})
+        else:
+            self._send_json({"error": "could not delete sound"}, HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _serve_asset(self, raw_path: str) -> None:
+        rel_path = unquote(raw_path).lstrip("/\\")
+        candidate = (ASSETS_DIR / rel_path).resolve()
+        if candidate != ASSETS_DIR and ASSETS_DIR not in candidate.parents:
+            self._send_json({"error": "forbidden"}, HTTPStatus.FORBIDDEN)
+            return
+        if not candidate.is_file():
+            self._send_json({"error": "asset not found"}, HTTPStatus.NOT_FOUND)
+            return
+
+        try:
+            body = candidate.read_bytes()
+        except OSError as error:
+            self._send_json({"error": f"could not read asset: {error}"}, HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
+
+        content_type = mimetypes.guess_type(candidate.name)[0] or "application/octet-stream"
+        self._send_bytes(body, content_type)
 
     def _match(self, payload: dict) -> None:
         text = str(payload.get("text") or "").strip()

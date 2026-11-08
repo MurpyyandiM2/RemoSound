@@ -312,3 +312,61 @@ def test_job_endpoint_reports_an_unknown_job(studio):
         get(base + "/api/jobs/doesnotexist")
 
     assert caught.value.code == 404
+
+
+def test_bank_payload_includes_provider_and_providers_list(tmp_path):
+    bank = seed_bank(
+        tmp_path,
+        [("boom-1", "Vine Boom", "memes")],
+    )
+    storage = StorageManager(bank)
+    storage.record_download(
+        "mixkit-1", "Whoosh", "transition", "transition/whoosh.mp3", [], provider="mixkit"
+    )
+    storage.save()
+
+    payload = bank_payload(storage)
+    sounds_by_id = {s["id"]: s for s in payload["sounds"]}
+    assert sounds_by_id["boom-1"]["provider"] == "myinstants"
+    assert sounds_by_id["mixkit-1"]["provider"] == "mixkit"
+    assert "providers" in payload
+    provider_ids = [p["id"] for p in payload["providers"]]
+    assert "myinstants" in provider_ids
+    assert "mixkit" in provider_ids
+
+
+def test_delete_endpoint_removes_sound(studio):
+    base, bank = studio
+    storage = StorageManager(bank)
+    assert storage.is_downloaded("boom-1")
+
+    status, payload = post(base + "/api/delete", {"id": "boom-1"})
+    assert status == 200
+    assert payload["ok"] is True
+    assert payload["id"] == "boom-1"
+
+    reloaded = StorageManager(bank)
+    assert not reloaded.is_downloaded("boom-1")
+
+
+def test_delete_endpoint_reports_missing_sound(studio):
+    base, _bank = studio
+    status, payload = post(base + "/api/delete", {"id": "nonexistent-id"})
+    assert status == 404
+    assert "error" in payload
+
+
+def test_download_endpoint_accepts_provider_mixkit(studio):
+    base, _bank = studio
+    status, payload = post(base + "/api/download", {"mode": "search", "target": "whoosh", "provider": "mixkit"})
+    assert status == 202
+    assert "job" in payload
+
+
+def test_asset_serving_returns_logo(studio):
+    base, _bank = studio
+    status, headers, body = get(base + "/assets/Logo%20utama.png")
+    assert status == 200
+    assert headers["Content-Type"] == "image/png"
+    assert len(body) > 0
+

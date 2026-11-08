@@ -75,23 +75,13 @@
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-    padding: 13px 28px;
+    padding: 11px 28px;
     border-bottom: 1px solid var(--border);
     background: rgba(9, 9, 11, .74);
     backdrop-filter: blur(16px);
   }
   .brand { display: flex; align-items: center; gap: 12px; color: inherit; text-decoration: none; }
-  .brand-mark {
-    display: grid;
-    place-items: center;
-    width: 38px;
-    height: 38px;
-    border-radius: 12px;
-    color: var(--green);
-    border: 1px solid rgba(34, 197, 94, .35);
-    background: linear-gradient(145deg, rgba(34, 197, 94, .22), rgba(99, 102, 241, .16));
-    box-shadow: 0 0 26px rgba(34, 197, 94, .16);
-  }
+  .brand-logo-img { height: 38px; width: auto; object-fit: contain; border-radius: 6px; }
   .brand-name { font-size: 16px; font-weight: 700; letter-spacing: -.02em; }
   .brand-sub { font-size: 12px; color: var(--muted); }
   .top-actions { display: flex; align-items: center; gap: 10px; }
@@ -285,6 +275,37 @@
     letter-spacing: .06em;
     white-space: nowrap;
   }
+  .badge-mixkit {
+    border-color: rgba(34, 197, 94, .45);
+    background: rgba(34, 197, 94, .14);
+    color: #4ade80;
+    font-weight: 600;
+  }
+  .badge-myinstants {
+    border-color: rgba(129, 140, 248, .45);
+    background: rgba(99, 102, 241, .16);
+    color: #a5b4fc;
+    font-weight: 600;
+  }
+  .card-delete {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--faint);
+    transition: color .15s, background .15s, border-color .15s;
+    flex: none;
+    padding: 0;
+    cursor: pointer;
+  }
+  .card-delete:hover {
+    color: var(--red);
+    background: rgba(248, 113, 113, .14);
+    border-color: rgba(248, 113, 113, .3);
+  }
   .sound-file {
     overflow: hidden;
     text-overflow: ellipsis;
@@ -358,6 +379,65 @@
   .btn-icon { width: 42px; padding: 0; }
 
   /* --- downloader ------------------------------------------------------- */
+  .provider-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .provider-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 38px;
+    padding: 0 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all .16s ease;
+  }
+  .provider-btn:hover { color: var(--text); border-color: var(--border-strong); }
+  .provider-btn[aria-selected="true"] {
+    background: var(--surface-3);
+    border-color: var(--border-strong);
+    color: var(--text);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, .25);
+  }
+  .mode-switch {
+    display: inline-flex;
+    gap: 4px;
+    padding: 3px;
+    background: var(--surface-2);
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    margin-left: auto;
+  }
+  .mode-btn {
+    min-height: 30px;
+    padding: 0 12px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 550;
+    cursor: pointer;
+    transition: all .14s ease;
+  }
+  .mode-btn:hover { color: var(--text); }
+  .mode-btn.active {
+    background: var(--surface-3);
+    border-color: var(--border-strong);
+    color: var(--text);
+  }
+  .downloader-search-wrap {
+    margin-bottom: 16px;
+  }
   .source-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 10px; }
   .source {
     display: flex;
@@ -435,10 +515,11 @@
   .job.error .job-state { color: var(--red); }
 
   /* --- studio ----------------------------------------------------------- */
-  .studio-grid { display: grid; grid-template-columns: 1.05fr .95fr; gap: 16px; align-items: start; }
+  .studio-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
   textarea {
     width: 100%;
-    min-height: 190px;
+    min-height: 160px;
+    max-height: 280px;
     padding: 13px 14px;
     resize: vertical;
     border: 1px solid var(--border);
@@ -446,6 +527,7 @@
     background: var(--surface);
     color: var(--text);
     line-height: 1.6;
+    overflow-y: auto;
   }
   textarea:focus { border-color: rgba(129, 140, 248, .6); outline: none; box-shadow: 0 0 0 3px rgba(99, 102, 241, .14); }
   textarea::placeholder { color: var(--faint); }
@@ -462,7 +544,7 @@
   .example:hover { color: var(--text); border-color: var(--border-strong); }
   .studio-actions { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
 
-  .match-list { display: grid; gap: 10px; }
+  .match-list { display: grid; gap: 10px; max-height: 580px; overflow-y: auto; padding-right: 4px; }
   .match {
     display: grid;
     gap: 9px;
@@ -511,7 +593,36 @@
     font-size: 12px;
   }
   .copy:hover { color: var(--text); border-color: #52525b; }
-  .match-actions { display: flex; gap: 8px; }
+  .match-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+
+  /* --- modal ------------------------------------------------------------ */
+  dialog.modal {
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    background: rgba(20, 20, 26, 0.98);
+    color: var(--text);
+    padding: 24px;
+    max-width: 440px;
+    width: calc(100% - 32px);
+    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(20px);
+  }
+  dialog.modal::backdrop {
+    background: rgba(0, 0, 0, 0.68);
+    backdrop-filter: blur(4px);
+  }
+  .modal-box { display: grid; gap: 14px; }
+  .modal-head { display: flex; align-items: center; gap: 10px; }
+  .modal-head h3 { margin: 0; font-size: 17px; font-weight: 700; }
+  #delete-modal-msg { margin: 0; color: var(--muted); line-height: 1.5; font-size: 13.5px; }
+  #delete-modal-msg strong { color: var(--text); }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
+  .btn-danger {
+    border-color: transparent;
+    background: #dc2626;
+    color: #fff;
+  }
+  .btn-danger:hover { background: #ef4444; border-color: transparent; }
 
   /* --- player ----------------------------------------------------------- */
   .player {
@@ -586,12 +697,10 @@
 <div class="app">
   <header class="topbar">
     <a class="brand" href="/">
-      <span class="brand-mark" aria-hidden="true">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h2l2-6 3 12 3-9 2 3h6"/></svg>
-      </span>
+      <img src="/assets/Logo utama.png" alt="RemoSound" class="brand-logo-img" onerror="this.style.display='none'">
       <span>
         <span class="brand-name">RemoSound</span><br>
-        <span class="brand-sub">Local audio studio</span>
+        <span class="brand-sub">Local sound bank & Remotion AI studio</span>
       </span>
     </a>
     <div class="top-actions">
@@ -604,7 +713,7 @@
     <section class="hero">
       <div>
         <h1>Your sound bank, <em>ready to score.</em></h1>
-        <p>Browse and preview every downloaded cue, pull new sounds from MyInstants, and turn a scene description into Remotion-ready audio.</p>
+        <p>Browse and preview every downloaded cue, pull new sounds from MyInstants or Mixkit (royalty-free), and turn a scene description into Remotion-ready audio.</p>
       </div>
       <div class="stats" aria-label="Bank statistics">
         <div class="stat"><b id="stat-total">0</b><span>Sounds</span></div>
@@ -653,9 +762,29 @@
         <div class="panel-head">
           <div>
             <h2>Pull new sounds</h2>
-            <p>Pick a source, choose how many, and RemoSound keeps the manifest in sync while it works.</p>
+            <p>Pick a provider and category or search query. RemoSound keeps the manifest in sync while it works.</p>
           </div>
           <span class="hint">5 downloads at a time · 5000 per run</span>
+        </div>
+
+        <div class="provider-bar">
+          <button class="provider-btn" id="provider-myinstants" type="button" aria-selected="true" data-provider="myinstants">
+            MyInstants <span class="badge badge-myinstants">Community</span>
+          </button>
+          <button class="provider-btn" id="provider-mixkit" type="button" aria-selected="false" data-provider="mixkit">
+            Mixkit <span class="badge badge-mixkit">Royalty-Free</span>
+          </button>
+          <div class="mode-switch" role="group" aria-label="Selection mode">
+            <button class="mode-btn active" id="btn-mode-cat" type="button" data-dmode="category">Categories</button>
+            <button class="mode-btn" id="btn-mode-search" type="button" data-dmode="search">Search</button>
+          </div>
+        </div>
+
+        <div id="downloader-search-wrap" class="downloader-search-wrap" hidden>
+          <div class="search" style="max-width: 100%;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input id="download-query" type="search" placeholder="Type a search query (e.g. whoosh, boom, bell, laugh)..." autocomplete="off" aria-label="Search sounds to download">
+          </div>
         </div>
 
         <div class="source-grid" id="sources" role="group" aria-label="Download source"></div>
@@ -742,11 +871,31 @@
 
   <footer>
     <div class="footer-inner">
-      <span>Audio is community-uploaded MyInstants content. Verify rights before commercial use.</span>
-      <span>RemoSound · local, no cloud</span>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <img src="/assets/Ikon aplikasi.png" alt="" width="22" height="22" style="border-radius:5px;object-fit:contain;" onerror="this.style.display='none'">
+        <span>Audio sources: <strong>MyInstants</strong> (Community content) & <strong>Mixkit</strong> (Free Royalty-Free Sound Effects). Verify rights before commercial use.</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px;">
+        <a href="https://github.com/mrmurphy12/RemoSound" target="_blank" rel="noopener" style="color:var(--muted);text-decoration:none;">GitHub</a>
+        <span>RemoSound · local, no cloud</span>
+      </div>
     </div>
   </footer>
 </div>
+
+<dialog id="delete-modal" class="modal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+      <h3>Delete Sound</h3>
+    </div>
+    <p id="delete-modal-msg">Are you sure you want to delete this sound? This will remove the audio file from your local sound bank and manifest.</p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="delete-modal-cancel" type="button">Cancel</button>
+      <button class="btn btn-danger" id="delete-modal-confirm" type="button">Delete</button>
+    </div>
+  </div>
+</dialog>
 
 <div class="player" id="player" hidden>
   <button class="btn btn-icon" id="player-toggle" type="button" aria-label="Pause">
@@ -784,12 +933,16 @@
     sounds: [],
     categories: [],
     available: [],
+    providers: [],
+    provider: "myinstants",
+    dmode: "category",
     query: "",
     category: "all",
     source: { mode: "trending", target: "" },
     jobId: null,
     jobTimer: null,
     activeId: null,
+    pendingDeleteId: null,
     muted: false,
   };
 
@@ -816,6 +969,7 @@
     copy: svg('<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>', 15),
     disc: svg('<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2"/>', 17),
     fire: svg('<path d="M12 3c3 3.5 5 6 5 9a5 5 0 0 1-10 0c0-1.6.7-3 2-4.5.3 1.4 1 2.2 2 2.7C11.3 8.2 11.5 5.6 12 3Z"/>', 17),
+    trash: svg('<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>', 15),
   };
 
   const prettyCategory = (name) => {
@@ -888,6 +1042,7 @@
     state.sounds = data.sounds;
     state.categories = data.categories;
     state.available = data.available;
+    state.providers = data.providers || [];
     $("#stat-total").textContent = String(data.total);
     $("#stat-categories").textContent = String(data.categories.length);
     renderFilters();
@@ -911,26 +1066,35 @@
     return state.sounds.filter((sound) => {
       if (state.category !== "all" && sound.category !== state.category) return false;
       if (!query) return true;
-      return [sound.title, sound.category, sound.id, sound.path].some((field) =>
-        String(field).toLowerCase().includes(query)
+      return [sound.title, sound.category, sound.id, sound.path, sound.provider].some((field) =>
+        String(field || "").toLowerCase().includes(query)
       );
     });
   }
 
   function soundCard(sound) {
     const playing = state.activeId === sound.id && !audio.paused;
+    const providerBadge = sound.provider === "mixkit"
+      ? `<span class="badge badge-mixkit">Royalty-Free</span>`
+      : `<span class="badge badge-myinstants">Community</span>`;
     return `
-      <button class="sound-card ${playing ? "is-playing" : ""}" type="button" data-id="${esc(sound.id)}" aria-pressed="${playing}" aria-label="${playing ? "Pause" : "Play"} ${esc(sound.title)}">
-        <span class="card-play" aria-hidden="true">${playing ? ICONS.pause : ICONS.play}</span>
-        <span class="sound-body">
+      <div class="sound-card ${playing ? "is-playing" : ""}" data-id="${esc(sound.id)}">
+        <button class="card-play" type="button" data-play-id="${esc(sound.id)}" aria-pressed="${playing}" aria-label="${playing ? "Pause" : "Play"} ${esc(sound.title)}">
+          ${playing ? ICONS.pause : ICONS.play}
+        </button>
+        <span class="sound-body" data-play-id="${esc(sound.id)}" style="cursor:pointer">
           <span class="sound-title">${esc(sound.title)}</span>
           <span class="sound-sub">
             <span class="badge">${esc(prettyCategory(sound.category))}</span>
+            ${providerBadge}
             <span class="sound-file">${esc(sound.path.split("/").pop() || sound.id)}</span>
           </span>
         </span>
+        <button class="card-delete" type="button" data-delete-id="${esc(sound.id)}" title="Delete sound" aria-label="Delete ${esc(sound.title)}">
+          ${ICONS.trash}
+        </button>
         <span class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
-      </button>`;
+      </div>`;
   }
 
   function renderSounds() {
@@ -967,10 +1131,66 @@
   $("#empty-cta").addEventListener("click", () => selectTab("download"));
 
   $("#sound-grid").addEventListener("click", (event) => {
+    const delBtn = event.target.closest("[data-delete-id]");
+    if (delBtn) {
+      event.stopPropagation();
+      promptDelete(delBtn.dataset.deleteId);
+      return;
+    }
     const card = event.target.closest(".sound-card");
     if (!card) return;
     const sound = state.sounds.find((item) => item.id === card.dataset.id);
     if (sound) toggleSound(sound);
+  });
+
+  function promptDelete(soundId) {
+    const sound = state.sounds.find((s) => s.id === soundId);
+    state.pendingDeleteId = soundId;
+    const title = sound ? sound.title : soundId;
+    $("#delete-modal-msg").innerHTML = `Are you sure you want to delete <strong>${esc(title)}</strong>? This will permanently remove the audio file from your sound bank and manifest.`;
+    const modal = $("#delete-modal");
+    if (typeof modal.showModal === "function") {
+      modal.showModal();
+    } else {
+      modal.setAttribute("open", "");
+    }
+  }
+
+  function closeDeleteModal() {
+    const modal = $("#delete-modal");
+    if (typeof modal.close === "function") {
+      modal.close();
+    } else {
+      modal.removeAttribute("open");
+    }
+    state.pendingDeleteId = null;
+  }
+
+  $("#delete-modal-cancel").addEventListener("click", closeDeleteModal);
+
+  $("#delete-modal-confirm").addEventListener("click", async () => {
+    const id = state.pendingDeleteId;
+    if (!id) return;
+    try {
+      await api("/api/delete", {
+        method: "POST",
+        body: JSON.stringify({ id }),
+      });
+      if (state.activeId === id) {
+        audio.pause();
+        audio.removeAttribute("src");
+        audio.load();
+        state.activeId = null;
+        $("#player").hidden = true;
+      }
+      closeDeleteModal();
+      toast("Sound deleted from your sound bank.");
+      await loadBank();
+      $$(`.match[data-id="${id}"]`).forEach((el) => el.remove());
+    } catch (error) {
+      toast(error.message, "error");
+      closeDeleteModal();
+    }
   });
 
   // --- audio player ------------------------------------------------------
@@ -1049,9 +1269,11 @@
   // --- downloader --------------------------------------------------------
 
   function renderSources() {
+    const currentProv = state.providers.find((p) => p.id === state.provider);
+    const catList = (currentProv && currentProv.categories) || state.available;
     const sources = [
-      { mode: "trending", target: "", name: "Trending", tag: "right now", hue: 150 },
-      ...state.available.map((category) => ({
+      { mode: "trending", target: "", name: "Trending", tag: "top listed", hue: 150 },
+      ...catList.map((category) => ({
         mode: "category",
         target: category.slug,
         name: category.name,
@@ -1073,6 +1295,41 @@
       })
       .join("");
   }
+
+  $("#provider-myinstants").addEventListener("click", () => {
+    state.provider = "myinstants";
+    $("#provider-myinstants").setAttribute("aria-selected", "true");
+    $("#provider-mixkit").setAttribute("aria-selected", "false");
+    $("#download-query").placeholder = "Search sounds on MyInstants (e.g. boom, whoosh, victory)...";
+    state.source = { mode: "trending", target: "" };
+    renderSources();
+  });
+
+  $("#provider-mixkit").addEventListener("click", () => {
+    state.provider = "mixkit";
+    $("#provider-mixkit").setAttribute("aria-selected", "true");
+    $("#provider-myinstants").setAttribute("aria-selected", "false");
+    $("#download-query").placeholder = "Search royalty-free sounds on Mixkit (e.g. whoosh, transition, bell)...";
+    state.source = { mode: "trending", target: "" };
+    renderSources();
+  });
+
+  $("#btn-mode-cat").addEventListener("click", () => {
+    state.dmode = "category";
+    $("#btn-mode-cat").classList.add("active");
+    $("#btn-mode-search").classList.remove("active");
+    $("#sources").hidden = false;
+    $("#downloader-search-wrap").hidden = true;
+  });
+
+  $("#btn-mode-search").addEventListener("click", () => {
+    state.dmode = "search";
+    $("#btn-mode-search").classList.add("active");
+    $("#btn-mode-cat").classList.remove("active");
+    $("#sources").hidden = true;
+    $("#downloader-search-wrap").hidden = false;
+    $("#download-query").focus();
+  });
 
   $("#sources").addEventListener("click", (event) => {
     const button = event.target.closest(".source");
@@ -1099,6 +1356,20 @@
   $("#start").addEventListener("click", async () => {
     const limit = Math.max(1, Math.min(5000, Number.parseInt($("#limit").value, 10) || 50));
     $("#limit").value = String(limit);
+
+    let mode = state.source.mode;
+    let target = state.source.target;
+    if (state.dmode === "search") {
+      const q = $("#download-query").value.trim();
+      if (!q) {
+        $("#download-query").focus();
+        toast("Please enter a search query first.", "error");
+        return;
+      }
+      mode = "search";
+      target = q;
+    }
+
     $("#start").disabled = true;
     $("#job").hidden = false;
     $("#job").classList.remove("error");
@@ -1107,7 +1378,7 @@
     try {
       const data = await api("/api/download", {
         method: "POST",
-        body: JSON.stringify({ mode: state.source.mode, target: state.source.target, limit }),
+        body: JSON.stringify({ mode, target, limit, provider: state.provider }),
       });
       state.jobId = data.job.id;
       pollJob();
@@ -1201,12 +1472,16 @@
     list.innerHTML = matches
       .map((match) => {
         const code = `<Audio src={staticFile(${JSON.stringify(match.src)})} />`;
+        const providerBadge = match.provider === "mixkit"
+          ? `<span class="badge badge-mixkit">Royalty-Free</span>`
+          : `<span class="badge badge-myinstants">Community</span>`;
         return `
-          <article class="match">
+          <article class="match" data-id="${esc(match.id)}">
             <div class="match-top">
               <span class="score">score ${Number(match.score) || 0}</span>
               <span class="match-title">${esc(match.title)}</span>
               <span class="badge">${esc(prettyCategory(match.category))}</span>
+              ${providerBadge}
             </div>
             <div class="code-row">
               <code class="code">${esc(code)}</code>
@@ -1214,6 +1489,7 @@
             </div>
             <div class="match-actions">
               <button class="btn btn-ghost" type="button" data-play="${esc(match.id)}" aria-label="Play ${esc(match.title)}">${ICONS.play} Preview</button>
+              <button class="card-delete" type="button" data-delete-id="${esc(match.id)}" title="Delete sound" aria-label="Delete ${esc(match.title)}">${ICONS.trash}</button>
             </div>
           </article>`;
       })
@@ -1221,6 +1497,13 @@
   }
 
   $("#matches").addEventListener("click", async (event) => {
+    const del = event.target.closest("[data-delete-id]");
+    if (del) {
+      event.stopPropagation();
+      promptDelete(del.dataset.deleteId);
+      return;
+    }
+
     const copy = event.target.closest("[data-copy]");
     if (copy) {
       const code = copy.dataset.copy;

@@ -10,9 +10,10 @@ from pathlib import Path
 import httpx
 import pytest
 
-from remosound.scraper import BASE_URL, MyInstantsScraper
+from remosound.scraper import BASE_URL, MixkitScraper, MyInstantsScraper
 
 FIXTURE = Path(__file__).parent / "fixtures" / "myinstants_page.html"
+MIXKIT_FIXTURE = Path(__file__).parent / "fixtures" / "mixkit_page.html"
 
 EXPECTED_AUDIO_URLS = [
     f"{BASE_URL}/media/sounds/a.mp3",
@@ -291,3 +292,42 @@ async def test_fetch_page_backs_off_exponentially_between_retries(monkeypatch):
     assert call_count == 4
     # 0.5 s before every attempt, then 0.5 s, 1 s, and 2 s of backoff.
     assert sleeps == [0.5, 0.5, 0.5, 1.0, 0.5, 2.0, 0.5]
+
+
+def test_mixkit_parse_buttons():
+    html = MIXKIT_FIXTURE.read_text(encoding="utf-8")
+    scraper = MixkitScraper(delay=0)
+    buttons = scraper.parse_buttons(html, category_hint="transition")
+
+    assert len(buttons) == 2
+    b1, b2 = buttons
+    assert b1.id == "mixkit-213"
+    assert b1.title == "Arcade retro game over"
+    assert b1.audio_url == "https://assets.mixkit.co/active_storage/sfx/213/213-preview.mp3"
+    assert b1.provider == "mixkit"
+    assert b1.category == "transition"
+
+    assert b2.id == "mixkit-39"
+    assert b2.title == "Quick whoosh transition"
+    assert b2.audio_url == "https://assets.mixkit.co/active_storage/sfx/39/39-preview.mp3"
+    assert b2.provider == "mixkit"
+
+
+async def test_mixkit_crawl_search():
+    html = MIXKIT_FIXTURE.read_text(encoding="utf-8")
+    requested_urls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested_urls.append(str(request.url))
+        return httpx.Response(200, text=html)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    scraper = MixkitScraper(client=client, delay=0)
+    async with client:
+        buttons = await scraper.crawl_search("whoosh", limit=2)
+
+    assert len(buttons) == 2
+    assert "https://mixkit.co/free-sound-effects/discover/whoosh/" in requested_urls[0]
+    assert buttons[0].provider == "mixkit"
+    assert buttons[0].category == "search"
+

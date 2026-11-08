@@ -111,6 +111,7 @@ class StorageManager:
         category: str,
         relative_path: str,
         tags: list[str],
+        provider: str = "myinstants",
     ) -> None:
         """Store (or overwrite) the manifest entry for ``instant_id``."""
 
@@ -120,7 +121,29 @@ class StorageManager:
             "category": category,
             "path": relative_path,
             "tags": list(tags),
+            "provider": provider,
         }
+
+    def delete_sound(self, instant_id: str) -> bool:
+        """Remove a sound from the bank and manifest, saving the manifest.
+
+        Returns ``True`` if the sound was found and removed, ``False`` if not found.
+        """
+
+        if instant_id not in self.manifest:
+            return False
+
+        entry = self.manifest.pop(instant_id)
+        rel_path = entry.get("path")
+        if rel_path:
+            sound_file = (self.root / rel_path).resolve()
+            # Ensure path is inside root before unlinking
+            root_resolved = self.root.resolve()
+            if sound_file == root_resolved or root_resolved in sound_file.parents:
+                sound_file.unlink(missing_ok=True)
+
+        self.save()
+        return True
 
     def category_dir(self, category: str) -> Path:
         """Return the category directory, creating it if needed.
@@ -155,7 +178,13 @@ class StorageManager:
         records = []
         for entry in self.manifest.values():
             tags = entry.get("tags")
-            records.append(dict(entry, tags=list(tags) if isinstance(tags, (list, tuple)) else []))
+            records.append(
+                dict(
+                    entry,
+                    tags=list(tags) if isinstance(tags, (list, tuple)) else [],
+                    provider=entry.get("provider", "myinstants"),
+                )
+            )
         return records
 
     def _load(self) -> dict[str, dict]:
@@ -191,6 +220,7 @@ class StorageManager:
                 "category": entry.get("category", ""),
                 "path": entry.get("path", ""),
                 "tags": list(tags) if isinstance(tags, list) else [],
+                "provider": entry.get("provider", "myinstants"),
             }
         return manifest
 

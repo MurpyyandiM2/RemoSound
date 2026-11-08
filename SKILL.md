@@ -1,13 +1,13 @@
 ---
 name: remosound
-description: Bulk-download MyInstants sounds into a local sound bank and match sounds to video scene text for Remotion.
+description: Bulk-download MyInstants and Mixkit sounds into a local sound bank and match sounds to video scene text for Remotion.
 ---
 
 # RemoSound
 
 RemoSound is a Python CLI that fills a local **sound bank** from
-[MyInstants](https://www.myinstants.com/), ranks that bank against a scene
-description, and emits `staticFile()`-ready paths for a Remotion project. It
+[MyInstants](https://www.myinstants.com/) and [Mixkit](https://mixkit.co/) (royalty-free),
+ranks that bank against a scene description, and emits `staticFile()`-ready paths for a Remotion project. It
 runs entirely on the machine, records every download in a manifest, and never
 fetches the same sound twice.
 
@@ -58,6 +58,8 @@ Search / Match / Rebuild index / Web studio). Modes are mutually exclusive.
 | `run.py --trending [--limit N]` | Download the trending listing |
 | `run.py --category <name> [--limit N]` | Download one category |
 | `run.py --search "<query>" [--limit N]` | Download search results |
+| `run.py [mode] --provider <myinstants\|mixkit>` | Select audio provider (default: `myinstants`; optional: `mixkit` for royalty-free) |
+| `run.py --delete <id>` | Delete a sound from bank and manifest by ID |
 | `run.py --match "<scene text>"` | Rank the bank and print JSON (top 5) |
 | `run.py --rebuild-index` | Write `sound-bank.json` and `sound-bank.ts` |
 | `run.py [mode] --dry-run` | Print the plan; write nothing |
@@ -178,6 +180,6 @@ layout above.
 
 ## License and content rights
 
-Code is MIT (see `LICENSE`). The audio is community-uploaded MyInstants
-content: RemoSound only automates retrieval, and users are responsible for
-verifying rights before commercial use.
+Code is MIT (see `LICENSE`). Audio is community-uploaded MyInstants content
+or free royalty-free Mixkit content: RemoSound only automates retrieval, and
+users are responsible for verifying rights before commercial use.

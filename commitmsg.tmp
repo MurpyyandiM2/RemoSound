@@ -1,0 +1,10 @@
+feat: add Mixkit royalty-free provider, search, delete, and branding
+
+- Add MixkitScraper for royalty-free sound effects with polite rate limits
+- Support --provider flag (myinstants default, mixkit optional) in CLI and web studio
+- Support online search query downloads for both providers
+- Add sound deletion with confirmation modal in web UI and --delete in CLI
+- Add provider badges ('Royalty-Free' for Mixkit, 'Community' for MyInstants)
+- Fix Remotion studio side-by-side layout and textarea max-height
+- Integrate official RemoSound logos in web header, footer, and README
+- Update all multi-agent rule files and test suite (235 passed)

@@ -51,7 +51,7 @@ from remosound.remotion_adapter import (
     export_typescript_helper,
     stage_into_remotion,
 )
-from remosound.scraper import CATEGORIES, InstantButton, MyInstantsScraper
+from remosound.scraper import CATEGORIES, InstantButton, MixkitScraper, MyInstantsScraper
 from remosound.storage import StorageManager
 from remosound.web import serve as serve_web
 
@@ -96,6 +96,20 @@ def build_parser() -> argparse.ArgumentParser:
         "--web",
         action="store_true",
         help="open the local RemoSound web studio (soundboard, downloader, Remotion matcher)",
+    )
+    mode.add_argument(
+        "--delete",
+        metavar="ID",
+        dest="delete",
+        type=_non_empty,
+        help="delete one sound from the bank and manifest by instant ID",
+    )
+
+    parser.add_argument(
+        "--provider",
+        choices=["myinstants", "mixkit"],
+        default="myinstants",
+        help="sound provider: myinstants (default) or mixkit (royalty-free)",
     )
 
     parser.add_argument(
@@ -227,6 +241,8 @@ async def _dispatch(args: argparse.Namespace, console: Console) -> int:
 
     if args.web:
         return _run_web(args, console)
+    if getattr(args, "delete", None) is not None:
+        return _run_delete(args, console)
     if args.match is not None:
         return _run_match(args, console)
     if args.rebuild_index:
@@ -234,6 +250,23 @@ async def _dispatch(args: argparse.Namespace, console: Console) -> int:
     if args.trending or args.category is not None or args.search is not None:
         return await _run_batch(args, console)
     return await interactive_menu(args, console)
+
+
+def _run_delete(args: argparse.Namespace, console: Console) -> int:
+    """Delete a sound from the bank and manifest."""
+
+    storage = StorageManager(args.out)
+    sound_id = args.delete
+    if not storage.is_downloaded(sound_id):
+        _warn(f"Sound {sound_id} is not in the bank at {args.out}.")
+        return 1
+
+    success = storage.delete_sound(sound_id)
+    if success:
+        console.print(f"Deleted sound [bold]{escape(sound_id)}[/bold] from the bank.")
+        return 0
+    _error(f"Could not delete sound {sound_id}.")
+    return 1
 
 
 def _run_web(args: argparse.Namespace, console: Console) -> int:
@@ -302,7 +335,7 @@ async def _run_batch(args: argparse.Namespace, console: Console) -> int:
 
     storage = StorageManager(args.out)
 
-    scraper = MyInstantsScraper()
+    scraper = MixkitScraper() if getattr(args, "provider", "myinstants") == "mixkit" else MyInstantsScraper()
     try:
         buttons = await _collect(scraper, args)
     except httpx.HTTPError as error:
@@ -352,7 +385,7 @@ async def _run_batch(args: argparse.Namespace, console: Console) -> int:
     return 1 if failed else 0
 
 
-async def _collect(scraper: MyInstantsScraper, args: argparse.Namespace) -> list[InstantButton]:
+async def _collect(scraper: MyInstantsScraper | MixkitScraper, args: argparse.Namespace) -> list[InstantButton]:
     """Crawl the listing selected by ``args``."""
 
     if args.trending:

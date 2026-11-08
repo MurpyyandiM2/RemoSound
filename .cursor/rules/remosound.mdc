@@ -5,7 +5,7 @@ alwaysApply: true
 
 # RemoSound
 
-Python CLI that bulk-downloads MyInstants sound effects into `downloads/` and
+Python CLI that bulk-downloads MyInstants and Mixkit (royalty-free) sound effects into `downloads/` and
 matches them to Remotion scenes. `run.py` is the only entrypoint — extend it
 instead of adding scripts.
 
@@ -48,6 +48,11 @@ exclusive.
 | Flag | Meaning |
 | --- | --- |
 | `--web` | Serve the local web studio on `127.0.0.1:5000-5009` and open it |
+| `--trending` | Collect trending sounds |
+| `--category NAME` | Collect sounds from one category |
+| `--search QUERY` | Collect sounds matching search query |
+| `--provider P` | Audio provider: `myinstants` (default) or `mixkit` (royalty-free) |
+| `--delete ID` | Delete a sound from bank and manifest by ID |
 | `--limit N` | Sounds to collect; default 100, capped at 5000 per run |
 | `--out DIR` | Bank root, default `downloads` |
 | `--dry-run` | Print the plan; write nothing |
@@ -77,5 +82,5 @@ the other; nothing but `run.py` touches `sys.argv`.
   `/api/audio?id=<instant-id>` after a bank-root containment check.
 - `downloads/`, `sound-bank.json`, and `sound-bank.ts` are runtime data, not
   source — never commit or hand-edit them.
-- Audio is community-uploaded MyInstants content; verify rights before
+- Audio is community-uploaded MyInstants content or royalty-free Mixkit content; verify rights before
   commercial use (see `README.md`).

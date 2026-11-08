@@ -28,6 +28,11 @@ TRENDING_URL = f"{BASE_URL}/en/index/us/"
 CATEGORY_URL = f"{BASE_URL}/en/categories/{{category}}/"
 SEARCH_URL = f"{BASE_URL}/en/search/?name={{query}}"
 
+MIXKIT_BASE_URL = "https://mixkit.co"
+MIXKIT_SFX_URL = f"{MIXKIT_BASE_URL}/free-sound-effects/"
+MIXKIT_CATEGORY_URL = f"{MIXKIT_BASE_URL}/free-sound-effects/{{category}}/"
+MIXKIT_SEARCH_URL = f"{MIXKIT_BASE_URL}/free-sound-effects/discover/{{query}}/"
+
 # The categories the site publishes, as (display name, listing slug). The slug
 # is what /en/categories/<slug>/ expects; display names are for humans.
 CATEGORIES: tuple[tuple[str, str], ...] = (
@@ -47,6 +52,23 @@ CATEGORIES: tuple[tuple[str, str], ...] = (
     ("WhatsApp Audios", "whatsapp audios"),
 )
 
+MIXKIT_CATEGORIES: tuple[tuple[str, str], ...] = (
+    ("Transition", "transition"),
+    ("Nature", "nature"),
+    ("Technology", "technology"),
+    ("Funny", "funny"),
+    ("Notification", "notification"),
+    ("Animals", "animals"),
+    ("Transport", "transport"),
+    ("Game", "game"),
+    ("Whoosh", "whoosh"),
+    ("Impact", "impact"),
+    ("Cinematic", "cinematic"),
+    ("Ambience", "ambience"),
+    ("Alarm", "alarm"),
+    ("Cartoon", "cartoon"),
+)
+
 USER_AGENT = "RemoSound/0.1 (polite sound-bank downloader; +https://www.myinstants.com)"
 
 REQUEST_TIMEOUT = 20.0
@@ -61,13 +83,14 @@ _HANDLER_ATTRIBUTES = ("onmousedown", "onclick")
 
 @dataclass(frozen=True)
 class InstantButton:
-    """One MyInstants sound card whose audio file could be resolved."""
+    """One MyInstants or Mixkit sound card whose audio file could be resolved."""
 
     id: str
     title: str
     audio_url: str
     category: str
     page_url: str
+    provider: str = "myinstants"
 
 
 class MyInstantsScraper:
@@ -215,6 +238,140 @@ class MyInstantsScraper:
             buttons.extend(fresh)
             page += 1
         return buttons[:limit]
+
+
+class MixkitScraper:
+    """Fetch and parse Mixkit royalty-free sound effect pages politely."""
+
+    def __init__(
+        self,
+        client: httpx.AsyncClient | None = None,
+        delay: float = 0.5,
+        max_retries: int = 3,
+    ) -> None:
+        self.delay = delay
+        self.max_retries = max_retries
+        self._client = client
+        self._owns_client = client is None
+
+    @property
+    def client(self) -> httpx.AsyncClient:
+        """The HTTP client, created on first request when none was injected."""
+
+        if self._client is None:
+            self._client = httpx.AsyncClient(
+                headers={"User-Agent": USER_AGENT},
+                follow_redirects=True,
+                timeout=REQUEST_TIMEOUT,
+            )
+        return self._client
+
+    async def close(self) -> None:
+        """Close the client this scraper created."""
+
+        if self._owns_client and self._client is not None:
+            await self._client.aclose()
+            self._client = None
+
+    async def fetch_page(self, url: str) -> str:
+        """Return the HTML at ``url``, retrying transient failures politely."""
+
+        attempt = 0
+        while True:
+            await asyncio.sleep(self.delay)
+            try:
+                response = await self.client.get(url)
+            except httpx.TransportError:
+                if attempt >= self.max_retries:
+                    raise
+            else:
+                if not _is_retryable(response.status_code) or attempt >= self.max_retries:
+                    response.raise_for_status()
+                    return response.text
+            await asyncio.sleep(self.delay * 2**attempt)
+            attempt += 1
+
+    def parse_buttons(self, html: str, category_hint: str = "general") -> list[InstantButton]:
+        """Parse Mixkit sound cards from HTML, in document order."""
+
+        soup = BeautifulSoup(html, "html.parser")
+        buttons: list[InstantButton] = []
+        for card in soup.select("div.item-grid-card"):
+            player = (
+                card
+                if card.has_attr("data-audio-player-preview-url-value")
+                else card.find(attrs={"data-audio-player-preview-url-value": True})
+            )
+            if not isinstance(player, Tag):
+                continue
+            audio_url = str(player.get("data-audio-player-preview-url-value") or "").strip()
+            if not audio_url:
+                continue
+
+            raw_id = str(player.get("data-audio-player-item-id-value") or "").strip()
+            if not raw_id:
+                raw_id = _path_segment(audio_url).replace(".mp3", "").replace("-preview", "")
+            if not raw_id:
+                continue
+
+            item_id = f"mixkit-{raw_id}" if not raw_id.startswith("mixkit-") else raw_id
+            title_node = card.select_one("h2.item-grid-card__title") or card.find("h2")
+            title = title_node.get_text(" ", strip=True) if title_node else f"Mixkit {raw_id}"
+            page_url = urljoin(MIXKIT_BASE_URL, f"/free-sound-effects/{raw_id}/")
+
+            buttons.append(
+                InstantButton(
+                    id=item_id,
+                    title=title,
+                    audio_url=audio_url,
+                    category=category_hint,
+                    page_url=page_url,
+                    provider="mixkit",
+                )
+            )
+        return buttons
+
+    async def crawl_category(self, category: str, limit: int = 100) -> list[InstantButton]:
+        """Crawl one Mixkit category listing, stopping at ``limit`` buttons."""
+
+        slug = quote(category.strip().lower(), safe="")
+        return await self._crawl(MIXKIT_CATEGORY_URL.format(category=slug), category, limit)
+
+    async def crawl_search(self, query: str, limit: int = 100) -> list[InstantButton]:
+        """Crawl Mixkit search results for ``query``, stopping at ``limit`` buttons."""
+
+        slug = quote_plus(query.strip().lower())
+        return await self._crawl(MIXKIT_SEARCH_URL.format(query=slug), "search", limit)
+
+    async def crawl_trending(self, limit: int = 100) -> list[InstantButton]:
+        """Crawl the Mixkit main listing, stopping at ``limit`` buttons."""
+
+        return await self._crawl(MIXKIT_SFX_URL, "trending", limit)
+
+    async def _crawl(self, listing_url: str, category_hint: str, limit: int) -> list[InstantButton]:
+        """Walk the pages of a Mixkit listing until ``limit`` or an empty page."""
+
+        buttons: list[InstantButton] = []
+        seen: set[str] = set()
+        page = 1
+        while len(buttons) < limit:
+            url = _page_url(listing_url, page) if page > 1 else listing_url
+            try:
+                html = await self.fetch_page(url)
+            except httpx.HTTPStatusError as err:
+                if err.response.status_code == 404 and page > 1:
+                    break
+                raise
+
+            by_id = {button.id: button for button in self.parse_buttons(html, category_hint)}
+            fresh = [button for item_id, button in by_id.items() if item_id not in seen]
+            if not fresh:
+                break
+            seen.update(button.id for button in fresh)
+            buttons.extend(fresh)
+            page += 1
+        return buttons[:limit]
+
 
 
 def _is_retryable(status_code: int) -> bool:

@@ -32,6 +32,7 @@ def make_button(
     title: str = "Boom",
     category: str = "memes",
     audio_url: str | None = None,
+    provider: str = "myinstants",
 ) -> InstantButton:
     return InstantButton(
         id=instant_id,
@@ -39,6 +40,7 @@ def make_button(
         audio_url=audio_url or f"{BASE_URL}/media/sounds/{instant_id}.mp3",
         category=category,
         page_url=f"{BASE_URL}/instant/{instant_id}/",
+        provider=provider,
     )
 
 
@@ -528,3 +530,17 @@ async def test_close_closes_a_client_the_downloader_created(tmp_path):
     await downloader.close()
 
     assert client.is_closed
+
+
+async def test_download_one_records_provider_from_button(tmp_path):
+    downloader, storage, client = make_downloader(tmp_path, audio_handler())
+    button = make_button(instant_id="mixkit-213", title="Game Over", provider="mixkit")
+
+    async with client:
+        path = await downloader.download_one(button)
+
+    assert path is not None
+    assert storage.is_downloaded("mixkit-213")
+    entry = storage.manifest["mixkit-213"]
+    assert entry["provider"] == "mixkit"
+
