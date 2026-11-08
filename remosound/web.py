@@ -47,7 +47,7 @@ from remosound.scraper import InstantButton, Scraper
 from remosound.storage import StorageManager, category_slug
 
 HOST = "127.0.0.1"
-DEFAULT_PORT = 5000
+DEFAULT_PORT = 5057
 PORT_ATTEMPTS = 10
 
 MAX_MATCH_RESULTS = 8

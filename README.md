@@ -104,8 +104,8 @@ Tests:
 
 ## Web studio
 
-`run.py --web` serves a local single-page studio at `http://127.0.0.1:5000/`
-(the next free port in `5000-5009` if that one is taken) and opens the browser.
+`run.py --web` serves a local single-page studio at `http://127.0.0.1:5057/`
+(the next free port in `5057-5066` if that one is taken) and opens the browser.
 It is Python's standard library only — no Node, no npm, no build step, no extra
 dependency.
 

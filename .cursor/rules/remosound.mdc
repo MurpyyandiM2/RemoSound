@@ -47,7 +47,7 @@ exclusive.
 
 | Flag | Meaning |
 | --- | --- |
-| `--web` | Serve the local web studio on `127.0.0.1:5000-5009` and open it |
+| `--web` | Serve the local web studio on `127.0.0.1:5057-5066` and open it |
 | `--trending` | Collect trending sounds |
 | `--category NAME` | Collect sounds from one category |
 | `--search QUERY` | Collect sounds matching search query |
