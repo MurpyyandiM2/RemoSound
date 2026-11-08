@@ -46,6 +46,50 @@ python -m venv .venv
 
 On macOS/Linux the interpreter path is `.venv/bin/python`.
 
+## Use it with Claude Code and Remotion
+
+RemoSound is an Agent Skill: install it once, and Claude can fill the sound bank
+of any Remotion project and place sounds in your scenes.
+
+1. **Install it as a Claude Code skill** (PowerShell; needs Git and Python 3.12+):
+
+   ```powershell
+   git clone https://github.com/MurpyyandiM2/RemoSound "$env:USERPROFILE\.claude\skills\remosound"
+   cd "$env:USERPROFILE\.claude\skills\remosound"
+   python -m venv .venv
+   .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+   .\.venv\Scripts\python.exe run.py --help
+   ```
+
+   On macOS/Linux, clone into `~/.claude/skills/remosound` and use
+   `.venv/bin/python`.
+
+2. **Open Claude Code inside your Remotion project** (the folder with its
+   `package.json`), in a new session so the skill is picked up.
+
+3. **Ask for sounds.** For example:
+
+   > Use the remosound skill. Download 20 wind sounds into this project with
+   > `--project .`, then add the best one to scene 2.
+
+Claude runs RemoSound with `--project`, so sounds are saved straight into
+`public/remosound/<category>/` of your video project (one copy, no staging) and
+`sound-bank.json` / `sound-bank.ts` are refreshed beside them. Claude then
+matches a scene description to the bank with `--match` and writes the
+`staticFile("remosound/...")` call for you.
+
+Prefer to pick by ear? Run the studio against your project, open the printed
+address (`http://127.0.0.1:5057/`), choose sounds in the **Remotion studio** tab
+and paste the generated snippet to Claude:
+
+```powershell
+.\.venv\Scripts\python.exe run.py --web --project "C:\path\to\my-video"
+```
+
+Limits still apply to Claude: at most 250 sounds per run and 3000 downloads per
+day. Other agents (OpenCode, Cursor, Antigravity) read `AGENTS.md` or their own
+rule file instead, as listed under Supported harnesses.
+
 ## Commands
 
 Run everything through the virtualenv interpreter. `run.py` is the only
