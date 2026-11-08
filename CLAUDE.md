@@ -24,9 +24,8 @@ the CLI instead of adding scripts.
 
   `.venv\Scripts\activate` lets you type `python` afterwards, but the
   canonical spelling in this repo is the explicit `.venv\Scripts\python.exe`.
-- **Raw PowerShell is broken here.** A shell hook (`caveman shrink`) rejects
-  bare `git ...` / `python ...` commands with `Unexpected token 'shrink'`.
-  Wrap every shell command in `cmd /c "..."`, and use `&` — never `&&` —
+- **Windows Shell & Quoting.** On Windows PowerShell or environments with
+  quoting hooks, wrap shell commands in `cmd /c "..."` and use `&` — never `&&` —
   inside a single `cmd /c`.
 
   ```bat
@@ -36,9 +35,8 @@ the CLI instead of adding scripts.
   cmd /c "git commit -F commitmsg.tmp"
   ```
 
-  `git commit -m "message"` with escaped quotes is unreliable on this host —
-  the hook mangles it and git treats the message words as pathspecs. Write the
-  message to a file, commit with `-F`, then delete the file.
+  For commits with quotes or multiple lines, writing the message to a file
+  and committing with `-F` avoids shell quote mangling across environments.
 
   Prefer dedicated file tools (`read`, `write`, `edit`, `glob`, `grep`) over
   shell one-liners.

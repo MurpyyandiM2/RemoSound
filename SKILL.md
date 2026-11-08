@@ -38,9 +38,8 @@ than MyInstants, or to build a UI.
   cmd /c ".venv\Scripts\python.exe -m pip install -r requirements.txt"
   ```
 
-- Raw PowerShell is broken on this host (a `caveman shrink` hook rejects bare
-  `git ...` / `python ...`). Prefix every shell command with `cmd /c "..."`
-  and join commands with `&`, never `&&`:
+- On Windows PowerShell or environments with quoting hooks, prefix shell
+  commands with `cmd /c "..."` and join commands with `&`, never `&&`:
 
   ```bat
   cmd /c ".venv\Scripts\python.exe -m pytest -q"

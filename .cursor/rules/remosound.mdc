@@ -14,8 +14,7 @@ instead of adding scripts.
 Dependencies live in `.venv/`. The canonical spelling is the explicit
 interpreter path; `.venv\Scripts\activate` shortens it to `python`.
 
-Raw PowerShell is broken on this host (a `caveman shrink` hook rejects bare
-`git ...` / `python ...` with `Unexpected token 'shrink'`). Wrap every shell
+On Windows PowerShell or environments with quoting hooks, wrap every shell
 command in `cmd /c "..."` and use `&`, never `&&`, inside one call:
 
 ```bat
