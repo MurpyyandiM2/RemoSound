@@ -27,7 +27,6 @@ Cursor, Antigravity, or a human in a shell.
 
   ```bat
   cmd /c "git status"
-  cmd /c ".venv\Scripts\python.exe -m pytest -q"
   cmd /c "git add -A"
   cmd /c "git commit -F commitmsg.tmp"
   ```
@@ -55,7 +54,6 @@ Do not re-implement scraping inline; call `run.py`.
 .venv\Scripts\python.exe run.py --rebuild-index
 .venv\Scripts\python.exe run.py --trending --limit 20 --dry-run
 .venv\Scripts\python.exe run.py --trending --remotion-public .\my-video\public
-.venv\Scripts\python.exe -m pytest -q
 ```
 
 `run.py` with no flags opens the interactive menu (Trending / Category /

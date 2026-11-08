@@ -96,12 +96,6 @@ Activate the environment once and the same commands shorten to `python run.py ..
 .venv\Scripts\activate
 ```
 
-Tests:
-
-```bat
-.venv\Scripts\python.exe -m pytest -q
-```
-
 ## Web studio
 
 `run.py --web` serves a local single-page studio at `http://127.0.0.1:5057/`

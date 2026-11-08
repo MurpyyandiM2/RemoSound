@@ -47,7 +47,6 @@ copyrighted and that they must check the rights before using it.
   commands with `cmd /c "..."` and join commands with `&`, never `&&`:
 
   ```bat
-  cmd /c ".venv\Scripts\python.exe -m pytest -q"
   ```
 
 ## Canonical commands
@@ -71,7 +70,6 @@ Search / Match / Rebuild index / Web studio). Modes are mutually exclusive.
 | `run.py [mode] --out DIR` | Bank root (default `downloads`) |
 | `run.py [mode] --remotion-public <project>/public` | Stage the bank into Remotion after a successful run |
 | `run.py [mode] --max-concurrency N` | Parallel downloads (default 5; values above 5 are capped at 5) |
-| `.venv\Scripts\python.exe -m pytest -q` | Run the test suite |
 
 Concrete spellings:
 
