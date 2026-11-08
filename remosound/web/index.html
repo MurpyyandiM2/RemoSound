@@ -64,18 +64,15 @@
           <span class="kbd" aria-hidden="true">Ctrl K</span>
         </div>
         <div class="pills" id="filters" role="group" aria-label="Filter by category"></div>
-        <div class="selection-bar" id="selection-bar">
-          <label class="select-all-label" title="Select or deselect all displayed sounds">
-            <input type="checkbox" id="chk-select-all" aria-label="Select all displayed sounds">
-            <span>Select All</span>
-          </label>
-          <button class="btn btn-danger btn-sm" id="btn-delete-selected" type="button" hidden>
-            Delete Selected (<span id="selected-count">0</span>)
-          </button>
-          <button class="btn btn-ghost btn-sm" id="btn-cancel-selection" type="button" hidden>
-            Deselect
-          </button>
-        </div>
+        <label class="select-all-label" title="Select or deselect all displayed sounds">
+          <input type="checkbox" id="chk-select-all" aria-label="Select all displayed sounds">
+          <span>Select All</span>
+        </label>
+      </div>
+      <div class="selection-bar" id="selection-bar" role="region" aria-label="Selected sounds" hidden>
+        <span class="selection-count"><strong id="selected-count">0</strong> selected</span>
+        <button class="btn btn-ghost btn-sm" id="btn-cancel-selection" type="button">Deselect</button>
+        <button class="btn btn-danger btn-sm" id="btn-delete-selected" type="button">Delete <span id="selected-delete-count">0</span></button>
       </div>
       <div class="sound-grid" id="sound-grid" aria-live="polite"></div>
       <div class="empty" id="board-empty" hidden>

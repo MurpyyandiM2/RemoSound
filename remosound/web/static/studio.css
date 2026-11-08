@@ -339,13 +339,27 @@ main { max-width: 1180px; margin: 0 auto; padding: 34px 28px 150px; }
   background: linear-gradient(180deg, rgba(99, 102, 241, .14), #121218);
   box-shadow: 0 0 0 1px rgba(99, 102, 241, .25);
 }
+.toolbar .select-all-label { margin-left: auto; }
+/* Floats over the page so showing it never moves the cards. */
 .selection-bar {
-  display: inline-flex;
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  z-index: 35;
+  display: flex;
   align-items: center;
-  gap: 8px;
-  margin-left: auto;
-  flex-wrap: wrap;
+  gap: 10px;
+  padding: 8px 10px 8px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: rgba(20, 20, 26, .96);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .55);
+  transform: translateX(-50%);
 }
+.selection-bar[hidden] { display: none; }
+body:has(#player:not([hidden])) .selection-bar { bottom: 96px; }
+.selection-count { color: var(--muted); font-size: 13px; }
+.selection-count strong { color: var(--text); }
 .select-all-label {
   display: inline-flex;
   align-items: center;

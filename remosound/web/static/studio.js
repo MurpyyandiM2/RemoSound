@@ -191,14 +191,11 @@
   function updateSelectionBar() {
     const displayed = filteredSounds();
     const count = state.selectedIds.size;
-    const btnDelete = $("#btn-delete-selected");
-    const btnCancel = $("#btn-cancel-selection");
     const chkAll = $("#chk-select-all");
-    const countSpan = $("#selected-count");
 
-    if (countSpan) countSpan.textContent = String(count);
-    if (btnDelete) btnDelete.hidden = count === 0;
-    if (btnCancel) btnCancel.hidden = count === 0;
+    $("#selected-count").textContent = String(count);
+    $("#selected-delete-count").textContent = String(count);
+    $("#selection-bar").hidden = count === 0;
 
     if (chkAll) {
       const allDisplayedSelected = displayed.length > 0 && displayed.every((s) => state.selectedIds.has(s.id));
