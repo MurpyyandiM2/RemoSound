@@ -437,3 +437,60 @@ def test_a_project_studio_keeps_the_index_in_step_with_deletes(tmp_path):
     assert status == 200
     ids = [sound["id"] for sound in json.loads(registry.read_text(encoding="utf-8"))["sounds"]]
     assert ids == ["pop-1"]
+
+
+# --- who may call the local API ---------------------------------------------
+
+
+def raw_request(url, method="GET", headers=None, body=None):
+    request = urllib.request.Request(url, data=body, headers=headers or {}, method=method)
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            return response.status
+    except urllib.error.HTTPError as error:
+        return error.code
+
+
+def test_a_foreign_host_header_is_refused(studio):
+    base, _bank = studio
+
+    assert raw_request(base + "/api/bank", headers={"Host": "evil.example"}) == 403
+
+
+def test_a_foreign_origin_cannot_start_a_download(studio):
+    base, _bank = studio
+    headers = {"Content-Type": "application/json", "Origin": "http://evil.example"}
+
+    assert raw_request(base + "/api/download", "POST", headers, b'{"mode": "trending"}') == 403
+
+
+def test_a_post_that_is_not_json_is_refused(studio):
+    base, _bank = studio
+    # A cross-site HTML form can send text/plain without a preflight; JSON it cannot.
+    headers = {"Content-Type": "text/plain"}
+
+    assert raw_request(base + "/api/download", "POST", headers, b'{"mode": "trending"}') == 415
+
+
+def test_a_second_download_is_refused_while_one_runs(studio, monkeypatch):
+    base, _bank = studio
+    started = threading.Event()
+    release = threading.Event()
+
+    def slow_job(job, *args, **kwargs):
+        job.update(state="running")
+        started.set()
+        release.wait(timeout=5)
+        job.update(state="done")
+
+    monkeypatch.setattr(web_module, "_run_job", slow_job)
+    try:
+        first_status, _ = post(base + "/api/download", {"mode": "trending"})
+        assert started.wait(timeout=5)
+        second_status, second = post(base + "/api/download", {"mode": "trending"})
+    finally:
+        release.set()
+
+    assert first_status == 202
+    assert second_status == 409
+    assert "already running" in second["error"]

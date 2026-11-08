@@ -232,7 +232,19 @@ RemoSound is deliberately gentle with remote providers: at most **5 concurrent
 downloads**, at least **0.5 s between page fetches**, at most **5000 sounds per
 run**, and exponential backoff (0.5 s, 1 s, 2 s) on HTTP 429 before it gives up
 after 3 retries. `--max-concurrency` can lower the concurrency limit but never
-raise it, and `--limit` cannot request more than 5000 in one run.
+raise it, and `--limit` cannot request more than 5000 in one run: asking for
+`999999999` simply gives 5000.
+
+These limits live in the shared layers, so a provider plugin cannot opt out of
+them: the delay between fetches has a 0.5 s floor, and one listing is never
+walked past 250 pages. The web studio runs **one download at a time**, so
+repeated requests cannot stack up more parallel downloads.
+
+The studio only answers the person at the machine. It binds `127.0.0.1`,
+refuses a foreign `Host` or `Origin` header (so a web page you happen to visit
+cannot start downloads, and DNS rebinding does not work), and accepts changes
+only as JSON. RemoSound opens no port to the internet and runs no server of
+its own that others could point at a site.
 
 ## Disclaimer
 

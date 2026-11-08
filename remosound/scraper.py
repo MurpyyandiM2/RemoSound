@@ -47,6 +47,12 @@ MIXKIT_CATEGORIES: tuple[tuple[str, str], ...] = (
 
 USER_AGENT = "RemoSound/0.1 (polite sound-bank downloader)"
 
+# Hard floors against hammering a site. Every provider, plugins included,
+# inherits them from Scraper: a smaller ``delay`` is raised to MIN_DELAY, and
+# one listing is never walked past MAX_PAGES however many sounds were asked for.
+MIN_DELAY = 0.5
+MAX_PAGES = 250
+
 REQUEST_TIMEOUT = 20.0
 
 
@@ -75,7 +81,7 @@ class Scraper:
         delay: float = 0.5,
         max_retries: int = 3,
     ) -> None:
-        self.delay = delay
+        self.delay = max(MIN_DELAY, delay)
         self.max_retries = max_retries
         self._client = client
         self._owns_client = client is None
@@ -145,13 +151,14 @@ class Scraper:
         Ids already collected are skipped, and the walk stops as soon as a page
         contributes no new id. That bounds the cost both for a listing that runs
         out of pages and for a server that ignores ``?page=n`` and keeps serving
-        the same page. A 404 past the first page ends the listing.
+        the same page. A 404 past the first page ends the listing, and so does
+        reaching :data:`MAX_PAGES`.
         """
 
         buttons: list[InstantButton] = []
         seen: set[str] = set()
         page = 1
-        while len(buttons) < limit:
+        while len(buttons) < limit and page <= MAX_PAGES:
             try:
                 html = await self.fetch_page(page_url(listing_url, page))
             except httpx.HTTPStatusError as err:

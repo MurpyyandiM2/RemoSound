@@ -105,10 +105,13 @@ Rules the parser enforces:
 
 - At most **5 concurrent downloads** — `--max-concurrency` may lower this,
   never raise it.
-- At least **0.5 s between page fetches**.
+- At least **0.5 s between page fetches** (a plugin cannot lower it), and at
+  most **250 pages** walked per listing.
 - Honor HTTP **429** with exponential backoff: 0.5 s, 1 s, 2 s, then give up
   after 3 retries.
 - At most **5000 sounds per run** — `--limit` cannot request more.
+- The web studio runs **one download job at a time** and rejects a foreign
+  `Host`/`Origin` or a non-JSON POST.
 - Anything already recorded in `<out>/manifest.json` is never downloaded
   again. Partial files carry a `.part` suffix and are deleted on failure.
 - Every filename written to disk strips or replaces `\ / : * ? " < > |` and

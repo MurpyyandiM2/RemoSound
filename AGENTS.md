@@ -125,8 +125,11 @@ must keep these invariants:
 
 - At most **5 concurrent downloads** (`--max-concurrency` may lower this,
   never raise it).
-- At least **0.5 s between page fetches**.
+- At least **0.5 s between page fetches** (a plugin cannot lower it) and at
+  most **250 pages** walked per listing.
 - At most **5000 sounds per run** — `--limit` cannot request more.
+- The web studio runs **one download job at a time** and refuses a foreign
+  `Host`/`Origin` header or a non-JSON POST.
 - Honor HTTP **429** with exponential backoff: 0.5 s, 1 s, 2 s, then give up
   after 3 retries.
 - Anything already recorded in `downloads/manifest.json` is never downloaded

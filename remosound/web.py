@@ -113,8 +113,12 @@ class JobRegistry:
         self._lock = threading.Lock()
         self._jobs: dict[str, DownloadJob] = {}
 
-    def add(self, job: DownloadJob) -> DownloadJob:
+    def add_if_idle(self, job: DownloadJob) -> DownloadJob | None:
+        """Register ``job`` unless another is still running; one download at a time."""
+
         with self._lock:
+            if any(known.snapshot()["state"] in ("queued", "running") for known in self._jobs.values()):
+                return None
             self._jobs[job.id] = job
             while len(self._jobs) > JOB_HISTORY:
                 self._jobs.pop(next(iter(self._jobs)))
@@ -133,14 +137,17 @@ def start_download(
     out: Path,
     provider: str = DEFAULT_PROVIDER,
     refresh_index: bool = False,
-) -> DownloadJob:
+) -> DownloadJob | None:
     """Register a job and run it on a daemon thread.
 
     The caller gets its snapshot immediately; the browser polls
-    ``/api/jobs/<id>`` for progress.
+    ``/api/jobs/<id>`` for progress. Returns ``None`` while another job is
+    still running, so requests cannot multiply the 5-download limit.
     """
 
-    job = registry.add(DownloadJob(mode=mode, target=target, limit=limit, provider=provider))
+    job = registry.add_if_idle(DownloadJob(mode=mode, target=target, limit=limit, provider=provider))
+    if job is None:
+        return None
     thread = threading.Thread(
         target=_run_job,
         args=(job, mode, target, limit, Path(out), provider, refresh_index),
@@ -379,7 +386,28 @@ class _Handler(BaseHTTPRequestHandler):
 
     # --- routing -----------------------------------------------------------
 
+    def _allowed(self, post: bool = False) -> bool:
+        """Refuse requests the person at this machine did not make from the studio.
+
+        Any web page can make a browser call 127.0.0.1, and DNS rebinding can
+        point another hostname here. So the Host and Origin must be ours, and a
+        POST must be JSON, which a cross-site form cannot send.
+        """
+
+        port = self.server.server_address[1]
+        host = self.headers.get("Host", "")
+        origin = self.headers.get("Origin")
+        if host not in (f"{HOST}:{port}", f"localhost:{port}") or (origin is not None and origin != f"http://{host}"):
+            self._send_json({"error": "forbidden"}, HTTPStatus.FORBIDDEN)
+            return False
+        if post and not (self.headers.get("Content-Type") or "").lower().startswith("application/json"):
+            self._send_json({"error": "content type must be application/json"}, HTTPStatus.UNSUPPORTED_MEDIA_TYPE)
+            return False
+        return True
+
     def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
+        if not self._allowed():
+            return
         route = urlparse(self.path)
         try:
             if route.path in ("/", "/index.html"):
@@ -405,6 +433,8 @@ class _Handler(BaseHTTPRequestHandler):
             return
 
     def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
+        if not self._allowed(post=True):
+            return
         route = urlparse(self.path)
         try:
             payload = self._read_json()
@@ -505,6 +535,9 @@ class _Handler(BaseHTTPRequestHandler):
             provider=provider,
             refresh_index=self.server.refresh_index,
         )
+        if job is None:
+            self._send_json({"error": "a download is already running"}, HTTPStatus.CONFLICT)
+            return
         self._send_json({"job": job.snapshot()}, HTTPStatus.ACCEPTED)
 
     def _delete_sound(self, payload: dict) -> None:
