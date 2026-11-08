@@ -86,7 +86,7 @@ entrypoint — there are no separate scripts to remember.
 
 The mode flags (`--trending`, `--category`, `--search`, `--match`,
 `--delete`, `--rebuild-index`, `--web`) are mutually exclusive. `--limit` defaults to 100
-and is capped at 1000 per run. `--remotion-public` needs a batch command or
+and is capped at 250 per run. `--remotion-public` needs a batch command or
 `--rebuild-index`. Exit codes: `0` success, `1` runtime failure, `2` usage
 error.
 
@@ -236,11 +236,11 @@ prefix the returned `path` with `remosound/` before passing it to
 ## Etiquette and limits
 
 RemoSound is deliberately gentle with remote providers: at most **5 concurrent
-downloads**, at least **0.5 s between page fetches**, at most **1000 sounds per
+downloads**, at least **0.5 s between page fetches**, at most **250 sounds per
 run**, and exponential backoff (0.5 s, 1 s, 2 s) on HTTP 429 before it gives up
 after 3 retries. `--max-concurrency` can lower the concurrency limit but never
-raise it, and `--limit` cannot request more than 1000 in one run: asking for
-`999999999` simply gives 1000.
+raise it, and `--limit` cannot request more than 250 in one run: asking for
+`999999999` simply gives 250.
 
 On top of that, download starts are spaced at least 0.2 s apart, and a daily
 budget of **3000 downloads** is shared by every run and every bank (it is kept

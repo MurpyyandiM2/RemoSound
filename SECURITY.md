@@ -8,7 +8,7 @@ audio, and holds no accounts or secrets.
 - **Hammering a site.** Hard limits live in `remosound/safety.py` and
   `remosound/scraper.py` and apply to every provider, plugins included: 5
   parallel downloads, 0.2 s between download starts, at least 0.5 s between page
-  fetches, at most 250 pages per listing, 1000 sounds per run and 3000 downloads
+  fetches, at most 250 pages per listing, 250 sounds per run and 3000 downloads
   per day.
 - **Hostile download links.** An audio link comes from a remote page. Only
   `http(s)` links to public addresses are fetched (redirects are checked hop by

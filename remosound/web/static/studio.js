@@ -499,8 +499,12 @@
     })
   );
 
+  $("#limit").addEventListener("input", (event) => {
+    if (Number.parseInt(event.target.value, 10) > 250) event.target.value = "250";
+  });
+
   $("#start").addEventListener("click", async () => {
-    const limit = Math.max(1, Math.min(1000, Number.parseInt($("#limit").value, 10) || 50));
+    const limit = Math.max(1, Math.min(250, Number.parseInt($("#limit").value, 10) || 50));
     $("#limit").value = String(limit);
 
     let mode = state.source.mode;

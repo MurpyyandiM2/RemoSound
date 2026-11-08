@@ -16,7 +16,7 @@ from datetime import date
 from pathlib import Path
 from urllib.parse import urlparse
 
-MAX_LIMIT = 1000  # sounds collected per run
+MAX_LIMIT = 250  # sounds collected per run
 MAX_CONCURRENCY = 5  # downloads at once
 MAX_FILE_BYTES = 50 * 1024 * 1024  # one audio file; a hostile page cannot fill the disk
 MAX_REDIRECTS = 5

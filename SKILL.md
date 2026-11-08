@@ -88,7 +88,7 @@ Concrete spellings:
 Rules the parser enforces:
 
 - `--limit` is a positive integer, default **100**, and is silently capped at
-  **1000 per run**.
+  **250 per run**.
 - `--max-concurrency` is a positive integer, default **5**; the downloader
   clamps anything higher back to 5.
 - `--remotion-public` needs a batch mode or `--rebuild-index`; otherwise the
@@ -107,7 +107,7 @@ Rules the parser enforces:
   most **250 pages** walked per listing.
 - Honor HTTP **429** with exponential backoff: 0.5 s, 1 s, 2 s, then give up
   after 3 retries.
-- At most **1000 sounds per run** — `--limit` cannot request more — and at most
+- At most **250 sounds per run** — `--limit` cannot request more — and at most
   **3000 downloads per day** across all runs (`~/.remosound/budget.json`).
 - Downloads start at least **0.2 s** apart. An audio link must be `http(s)` to a
   public address (redirects included) and a file may not exceed **50 MB**.
